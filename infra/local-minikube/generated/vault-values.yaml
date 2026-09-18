@@ -13,6 +13,17 @@ server:
   enterpriseLicense:
     secretName: vault-ent-license
     secretKey: license
+  # Joins the Consul service mesh; ServiceDefaults (permissive mTLS) and
+  # ServiceIntentions live in infra/local-minikube/mesh-vault-postgres.yaml.
+  annotations:
+    consul.hashicorp.com/connect-inject: "true"
+    consul.hashicorp.com/enable-metrics-merging: "false"
+    # The chart also creates vault-internal/-active/-standby/-ui Services that
+    # select this same pod; register only "vault" (must match the ServiceAccount).
+    consul.hashicorp.com/kubernetes-service: "vault"
+    # The chart's readiness probe is HTTPS. Permissive mTLS lets kubelet reach
+    # 8200 directly, so keep probes off Consul's rewritten-probe path.
+    consul.hashicorp.com/transparent-proxy-overwrite-probes: "false"
   extraEnvironmentVars:
     # VAULT_ADDR is not listed here: global.tlsDisable=false already makes the
     # chart set it to this same value, and a newer Helm/kubectl (server-side

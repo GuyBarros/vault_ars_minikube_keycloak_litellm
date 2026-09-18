@@ -24,7 +24,11 @@ spec:
     metadata:
       labels:
         app: postgres
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: "false"
     spec:
+      serviceAccountName: postgres
       containers:
         - name: postgres
           image: postgres:16
@@ -48,6 +52,13 @@ spec:
         resources:
           requests:
             storage: 5Gi
+---
+# Consul requires the ServiceAccount name to equal the mesh service name (ACLs on).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: postgres
+  namespace: default
 ---
 apiVersion: v1
 kind: Service

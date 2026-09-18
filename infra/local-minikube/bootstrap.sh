@@ -121,6 +121,8 @@ KC -n "$CONSUL_NAMESPACE" create secret generic consul-ent-license \
   --from-file=key="$CONSUL_LICENSE" --dry-run=client -o yaml | KC apply -f -
 KC -n "$CONSUL_NAMESPACE" create secret generic consul-bootstrap-token \
   --from-literal=token="$(cat "$GEN_DIR/consul_token")" --dry-run=client -o yaml | KC apply -f -
+KC -n "$CONSUL_NAMESPACE" create secret generic vault-ca \
+  --from-file=ca.crt="$GEN_DIR/ca.crt" --dry-run=client -o yaml | KC apply -f -
 HELM upgrade --install consul hashicorp/consul \
   --namespace "$CONSUL_NAMESPACE" \
   --version "$CONSUL_CHART_VERSION" \
@@ -182,7 +184,7 @@ echo "waiting for vault's HTTP listener to respond..."
 # getting parseable JSON back, not by the exit code.
 vault_status=""
 for i in $(seq 1 60); do
-  candidate=$(KC -n "$VAULT_NAMESPACE" exec vault-0 -- sh -c 'VAULT_SKIP_VERIFY=true vault status -format=json' 2>/dev/null) || true
+  candidate=$(KC -n "$VAULT_NAMESPACE" exec -c vault vault-0 -- sh -c 'VAULT_SKIP_VERIFY=true vault status -format=json' 2>/dev/null) || true
   if echo "$candidate" | jq -e . >/dev/null 2>&1; then
     vault_status="$candidate"
     break
@@ -192,10 +194,10 @@ done
 [ -n "$vault_status" ] || { echo "vault never responded to 'vault status'" >&2; exit 1; }
 
 if echo "$vault_status" | jq -e '.initialized == false' >/dev/null; then
-  KC -n "$VAULT_NAMESPACE" exec vault-0 -- sh -c 'VAULT_SKIP_VERIFY=true vault operator init -n 1 -t 1 -format=json' > "$GEN_DIR/vault_init.json"
+  KC -n "$VAULT_NAMESPACE" exec -c vault vault-0 -- sh -c 'VAULT_SKIP_VERIFY=true vault operator init -n 1 -t 1 -format=json' > "$GEN_DIR/vault_init.json"
 fi
 unseal_key=$(jq -r '.unseal_keys_b64[0]' "$GEN_DIR/vault_init.json")
-KC -n "$VAULT_NAMESPACE" exec vault-0 -- sh -c "VAULT_SKIP_VERIFY=true vault operator unseal $unseal_key" >/dev/null
+KC -n "$VAULT_NAMESPACE" exec -c vault vault-0 -- sh -c "VAULT_SKIP_VERIFY=true vault operator unseal $unseal_key" >/dev/null
 jq -r '.root_token' "$GEN_DIR/vault_init.json" > "$GEN_DIR/vault_token"
 
 echo

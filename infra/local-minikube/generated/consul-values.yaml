@@ -27,6 +27,13 @@ server:
   replicas: 1
   bootstrapExpect: 1
   storage: 5Gi
+  # Vault's CA, mounted at /consul/userconfig/vault-ca/ca.crt so the Vault
+  # Connect CA provider (configured post-Vault-init by configure.sh) can verify
+  # Vault's TLS certificate.
+  extraVolumes:
+    - type: secret
+      name: vault-ca
+      load: false
 ui:
   enabled: true
   service:

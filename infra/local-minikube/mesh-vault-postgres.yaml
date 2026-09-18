@@ -1,0 +1,79 @@
+# Local-only mesh config for the two infra services brought into the Consul mesh:
+# Postgres (default ns) and Vault (vault ns). Applied by configure.sh before
+# Postgres is deployed, because Vault's database secrets engine connects to
+# Postgres during configure.sh itself - the intentions must already exist.
+#
+# Both are explicitly `tcp`: ProxyDefaults sets protocol=http mesh-wide, which
+# would make Envoy try to parse Postgres's wire protocol and Vault's TLS stream.
+#
+# Vault is `permissive`: the Consul servers (Vault is the mesh CA), the host's
+# NodePort/port-forward, and kubelet probes all reach Vault from outside the
+# mesh. Mesh clients still go over mTLS and need the intentions below.
+# Postgres stays strict - all its clients are in the mesh (Vault included).
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  protocol: tcp
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  protocol: tcp
+  mutualTLSMode: permissive
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  destination:
+    name: postgres
+    namespace: default
+  sources:
+    # Vault's database secrets engine (dynamic user-mcp credentials).
+    - name: vault
+      action: allow
+      namespace: vault
+    - name: keycloak
+      action: allow
+      namespace: default
+    - name: user-mcp
+      action: allow
+      namespace: default
+    - name: litellm-gateway
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: vault
+  namespace: vault
+spec:
+  destination:
+    name: vault
+    namespace: vault
+  sources:
+    # Workloads with a Vault Agent sidecar (agent-inject) or their own Vault client.
+    - name: ai-agent
+      action: allow
+      namespace: default
+    - name: user-mcp
+      action: allow
+      namespace: default
+    - name: consul-mcp-authz
+      action: allow
+      namespace: default
+    - name: opa-service
+      action: allow
+      namespace: default
+    - name: opa-mcp-authz
+      action: allow
+      namespace: default
