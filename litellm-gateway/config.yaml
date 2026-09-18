@@ -1,0 +1,94 @@
+# LiteLLM is the AI Gateway: PEP (every web / agent / MCP hop lands here)
+# and PDP (custom_auth admits the master key; SSO JWTs fall through to
+# LiteLLM; the optional OPA guardrail decides on prompt content).
+# ai-agent never talks to Ollama/OpenAI or user-mcp directly; the web BFF
+# never talks to ai-agent directly.
+#
+# Admission key: x-litellm-api-key (Authorization stays the upstream JWT —
+# Keycloak access token toward ai-agent, OBO toward user-mcp).
+model_list:
+  - model_name: qwen-local
+    litellm_params:
+      # Deliberately NOT litellm's native "ollama/" provider: its streaming
+      # translation doesn't convert Ollama's tool_calls delta into OpenAI's
+      # streaming tool_calls format - the model's function call leaks
+      # through as literal JSON text content instead of being executed
+      # (confirmed by comparing raw curl output: litellm's ollama/ streams
+      # the tool call as `delta.content` chunks with finish_reason=stop,
+      # while Ollama's own /v1 endpoint streams a correct delta.tool_calls
+      # with finish_reason=tool_calls). Using "openai/" against Ollama's own
+      # OpenAI-compatible endpoint instead just forwards that already-correct
+      # stream through, sidestepping litellm's buggy translation entirely.
+      model: openai/qwen2.5:7b
+      api_base: http://host.containers.internal:11434/v1
+      api_key: "not-needed"
+
+  - model_name: gpt-5-mini
+    litellm_params:
+      model: openai/gpt-5-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: opa-pdp
+    litellm_params:
+      guardrail: pdp_guardrail.OpaPdpGuardrail
+      mode: pre_call
+      default_on: true
+
+# Native MCP gateway, not HTTP pass-through. Standard pass-through parses
+# JSON-RPC, injects litellm_logging_obj, and user-mcp then 400s the
+# handshake (session created, then rejected). Agent talks MCP to
+# /user_mcp/mcp; LiteLLM is the MCP client toward user-mcp.
+mcp_servers:
+  user_mcp:
+    url: "http://user-mcp.virtual.consul/mcp"
+    transport: "http"
+    auth_type: "true_passthrough"
+    extra_headers: ["Authorization", "X-Request-ID"]
+    allow_all_keys: true
+    description: "user-mcp (OBO JWT in Authorization)"
+
+# LiteLLM's Agents tab is A2A, not the /v1/agent HTTP pass-through below.
+# Register the chat agent so it shows in GET /v1/agents and the Admin UI.
+# Keep both keys: `agents` (current) and `agent_list` (pre-v1.95.1 images).
+agents:
+  - agent_name: ai-agent
+    agent_card_params:
+      name: "ai-agent"
+      description: "Governed user-management agent (OBO + CIBA). Chat via /v1/agent."
+      url: "http://ai-agent.virtual.consul:8000"
+      protocolVersion: "1.0"
+      version: "1.0.0"
+      capabilities: {}
+      defaultInputModes: ["text"]
+      defaultOutputModes: ["text"]
+      skills: []
+
+agent_list:
+  - agent_name: ai-agent
+    agent_card_params:
+      name: "ai-agent"
+      description: "Governed user-management agent (OBO + CIBA). Chat via /v1/agent."
+      url: "http://ai-agent.virtual.consul:8000"
+      protocolVersion: "1.0"
+      version: "1.0.0"
+      capabilities: {}
+      defaultInputModes: ["text"]
+      defaultOutputModes: ["text"]
+      skills: []
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  database_url: os.environ/DATABASE_URL
+  custom_auth: pdp_auth.user_api_key_auth
+  # Restricted (LiteLLM default) hides config MCP servers from dashboard
+  # users whose key/team has no explicit mcp_servers grant.
+  user_mcp_management_mode: view_all
+  pass_through_request_timeout: 280
+  pass_through_endpoints:
+    # web-app -> LiteLLM -> ai-agent (chat, tokens, assurance)
+    - path: "/v1/agent"
+      target: "http://ai-agent.virtual.consul:8000/v1/agent"
+      include_subpath: true
+      forward_headers: true
+      timeout: 280

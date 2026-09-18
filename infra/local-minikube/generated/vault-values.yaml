@@ -1,0 +1,64 @@
+global:
+  enabled: true
+  tlsDisable: false
+# Vault Agent sidecar injector for the deploy-k8s workloads, which carry
+# `vault.hashicorp.com/agent-inject: "true"` and auth via the k8s_jwt backend.
+# Runs alongside the in-cluster Vault server (no separate injector release).
+injector:
+  enabled: true
+server:
+  image:
+    repository: hashicorp/vault-enterprise
+    tag: 2.1.0-ent
+  enterpriseLicense:
+    secretName: vault-ent-license
+    secretKey: license
+  extraEnvironmentVars:
+    # VAULT_ADDR is not listed here: global.tlsDisable=false already makes the
+    # chart set it to this same value, and a newer Helm/kubectl (server-side
+    # apply) rejects the resulting duplicate env-var entry.
+    VAULT_CACERT: /vault/userconfig/vault-server-tls/vault.ca
+  volumes:
+    - name: userconfig-vault-server-tls
+      secret:
+        secretName: vault-server-tls
+        defaultMode: 420
+    - name: vault-plugins
+      emptyDir: {}    
+  volumeMounts:
+    - name: userconfig-vault-server-tls
+      mountPath: /vault/userconfig/vault-server-tls
+      readOnly: true
+    - mountPath: /vault/plugins
+      name: vault-plugins
+      readOnly: false  
+  dataStorage:
+    enabled: true
+    size: 5Gi
+  standalone:
+    enabled: false
+  ha:
+    enabled: true
+    replicas: 1
+    raft:
+      enabled: true
+      setNodeId: true
+      config: |
+        ui = true
+        plugin_directory = "/vault/plugins"
+        listener "tcp" {
+          address            = "[::]:8200"
+          cluster_address    = "[::]:8201"
+          tls_cert_file      = "/vault/userconfig/vault-server-tls/vault.crt"
+          tls_key_file       = "/vault/userconfig/vault-server-tls/vault.key"
+          tls_client_ca_file = "/vault/userconfig/vault-server-tls/vault.ca"
+          tls_require_and_verify_client_cert = false
+        }
+        storage "raft" {
+          path = "/vault/data"
+        }
+        service_registration "kubernetes" {}
+ui:
+  enabled: true
+  serviceType: NodePort
+  serviceNodePort: 31200

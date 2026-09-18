@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920">
+<title>Agentic IAM Guardrails — Use Case &amp; User Story Tracker</title>
+<style>
+  /* ============================================================
+     TEMPLATE CHROME — IBM Carbon Light
+     Tokens: blue60 #0f62fe · gray100 #161616 · gray70 #6f6f6f
+             gray20 #e0e0e0 · gray10 #f4f4f4 · white #fff
+             green60 #24a148 · yellow50 #f1c21b · teal60 #009d9a
+             purple60 #8a3ffc · magenta60 #d02670
+     Font: IBM Plex Sans (Google Fonts)
+     ============================================================ */
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #c6c6c6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .slide {
+    width: 1920px;
+    height: 1080px;
+    background: #f4f4f4;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  /* ---- Top bar ---- */
+  .top-bar {
+    background: #ffffff;
+    border-bottom: 1px solid #e0e0e0;
+    padding: 0 72px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .tb-left { display: flex; align-items: center; gap: 20px; }
+  .tb-logo { font-size: 20px; font-weight: 700; color: #0f62fe; letter-spacing: 3px; }
+  .tb-divider { width: 1px; height: 28px; background: #e0e0e0; }
+  .tb-title { font-size: 15px; font-weight: 600; color: #161616; }
+  .tb-right { font-size: 12px; color: #6f6f6f; }
+
+  /* ---- Banner ---- */
+  .banner {
+    background: linear-gradient(135deg, #0530ad, #0f62fe);
+    padding: 24px 72px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .banner-title { font-size: 28px; font-weight: 700; color: #ffffff; margin-bottom: 4px; }
+  .banner-desc { font-size: 13px; color: rgba(255,255,255,0.6); font-weight: 300; }
+  .banner-stats { display: flex; gap: 14px; }
+  .stat-tile {
+    padding: 12px 22px; border-radius: 8px; text-align: center; min-width: 90px;
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+  }
+  .st-label { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.5); margin-bottom: 2px; }
+  .st-value { font-size: 20px; font-weight: 700; color: #ffffff; }
+  .st-value.green { color: #a7f0ba; }
+  .st-value.yellow { color: #f1c21b; }
+
+  /* ---- Summary card bar ---- */
+  .summary-bar {
+    padding: 14px 72px;
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+  .summary-card {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 14px 18px;
+    text-align: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    position: relative;
+    overflow: hidden;
+  }
+  .summary-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .summary-card.p1::before { background: #24a148; }
+  .summary-card.p2::before { background: #24a148; }
+  .summary-card.p3::before { background: #0f62fe; }
+  .summary-card.p4::before { background: #007d79; }
+  .summary-card.p5::before { background: #e0e0e0; }
+  .summary-card.p6::before { background: #e0e0e0; }
+  .sc-phase { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #6f6f6f; margin-bottom: 4px; }
+  .sc-count { font-size: 28px; font-weight: 700; color: #161616; line-height: 1; margin-bottom: 2px; }
+  .sc-label { font-size: 10px; color: #a8a8a8; font-weight: 300; }
+  .sc-count.zero { color: #c6c6c6; }
+
+  /* ---- Tracker table ---- */
+  .table-wrap { padding: 18px 72px; }
+  .tracker-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    table-layout: fixed;
+  }
+  .tracker-table thead th {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #6f6f6f;
+    padding: 12px 16px;
+    background: #f9f9f9;
+    border-bottom: 2px solid #e0e0e0;
+    text-align: left;
+  }
+  .tracker-table thead th.phase-col { text-align: center; width: 70px; }
+  .tracker-table tbody tr { border-bottom: 1px solid #f0f0f0; }
+  .tracker-table tbody tr:last-child { border-bottom: none; }
+  .tracker-table tbody tr:hover { background: #fafafa; }
+  .tracker-table td { padding: 14px 16px; vertical-align: middle; }
+
+  /* Use case name cell */
+  .uc-cell { display: flex; align-items: flex-start; gap: 12px; }
+  .uc-accent { width: 4px; height: 40px; border-radius: 2px; flex-shrink: 0; margin-top: 2px; }
+  .uc-name { font-size: 14px; font-weight: 600; color: #161616; margin-bottom: 2px; line-height: 1.2; }
+  .uc-lead { font-size: 11px; color: #6f6f6f; font-weight: 300; }
+
+  /* Persona tag */
+  .persona-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 10px; border-radius: 10px;
+    font-size: 11px; font-weight: 500;
+    background: #d9fbfb; color: #005d5d; white-space: nowrap;
+  }
+  .persona-tag.p-sec { background: #ffe9e8; color: #750e13; }
+  .persona-tag.p-gov { background: #f6d0fe; color: #6f2da8; }
+  .persona-tag.p-dev { background: #d0e2ff; color: #002d9c; }
+  .persona-tag.p-sre { background: #fff1d6; color: #8a4f00; }
+  .persona-tag.p-pol { background: #d9fbfb; color: #005d5d; }
+  .persona-tag.p-cao { background: #a7f0ba; color: #044317; }
+  .persona-tag.p-pe  { background: #e0e0e0; color: #393939; }
+  .persona-tag-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: 0.7; }
+
+  /* User story text — now prose, not truncated */
+  .story-text {
+    font-size: 12px;
+    color: #161616;
+    line-height: 1.5;
+    font-weight: 400;
+  }
+  .story-text .role { font-weight: 600; color: #0f62fe; }
+
+  /* Phase cells */
+  .phase-cell { text-align: center; }
+  .phase-dot { width: 28px; height: 28px; border-radius: 50%; margin: 0 auto; display: flex; align-items: center; justify-content: center; }
+  .phase-dot.done { background: #defbe6; border: 2px solid #24a148; }
+  .phase-dot.done::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #24a148; }
+  .phase-dot.active { background: #d0e2ff; border: 2px solid #0f62fe; animation: pulse-blue 2s ease-in-out infinite; }
+  .phase-dot.active::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #0f62fe; }
+  @keyframes pulse-blue {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(15,98,254,0.25); }
+    50% { box-shadow: 0 0 0 6px rgba(15,98,254,0); }
+  }
+  .phase-dot.future { background: #f4f4f4; border: 2px solid #d0d0d0; }
+  .phase-dot.blocked { background: #fff1f1; border: 2px solid #da1e28; }
+  .phase-dot.blocked::after { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #da1e28; }
+
+  /* Timeline cell */
+  .timeline-cell { font-size: 13px; font-weight: 600; color: #0f62fe; white-space: nowrap; }
+
+  /* Status badge */
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 600;
+    padding: 4px 12px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .status-badge.on-track { background: #defbe6; color: #0e6027; }
+  .status-badge.at-risk { background: #fff8e1; color: #8a6d3b; }
+  .status-badge.backlog { background: #e8e8e8; color: #525252; }
+  .status-badge-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .status-badge.on-track .status-badge-dot { background: #24a148; }
+  .status-badge.at-risk .status-badge-dot { background: #f1c21b; }
+  .status-badge.backlog .status-badge-dot { background: #8d8d8d; }
+
+  /* Milestone cell */
+  .ms-cell { max-width: 200px; }
+  .ms-cell-title { font-size: 12px; font-weight: 600; color: #161616; margin-bottom: 2px; line-height: 1.25; }
+  .ms-cell-date { font-size: 11px; color: #0f62fe; font-weight: 500; }
+
+  /* ---- Footer ---- */
+  .footer-strip {
+    position: absolute; bottom: 0; left: 0; right: 0; height: 40px;
+    background: #161616; display: flex; align-items: center;
+    justify-content: space-between; padding: 0 72px;
+  }
+  .fs-text { font-size: 11px; color: rgba(255,255,255,0.5); font-weight: 300; }
+  .fs-logo { font-size: 14px; font-weight: 700; color: rgba(255,255,255,0.7); letter-spacing: 3px; }
+
+  @media print {
+    body { background: #fff; padding: 0; gap: 0; }
+    .slide { page-break-after: always; box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     SLIDE 1 — WORKLOAD IDENTITY PATTERN
+     6 business-level user stories · outcome language · no tech detail
+     ============================================================ -->
+<div class="slide" id="slide-workload-identity">
+
+  <div class="top-bar">
+    <div class="tb-left">
+      <span class="tb-logo">IBM</span>
+      <div class="tb-divider"></div>
+      <span class="tb-title">Advanced Architecture · Agentic IAM Guardrails</span>
+    </div>
+    <span class="tb-right">Updated: April 22, 2026</span>
+  </div>
+
+  <div class="banner">
+    <div>
+      <div class="banner-title">Workload Identity — Use Case &amp; User Story Tracker</div>
+      <div class="banner-desc">Every agent instance gets its own verifiable identity — regardless of platform, with no shared credentials and full audit attribution</div>
+    </div>
+    <div class="banner-stats">
+      <div class="stat-tile"><div class="st-label">Stories</div><div class="st-value">6</div></div>
+      <div class="stat-tile"><div class="st-label">On Track</div><div class="st-value green">5</div></div>
+      <div class="stat-tile"><div class="st-label">At Risk</div><div class="st-value yellow">1</div></div>
+    </div>
+  </div>
+
+  <!-- Phase summary bar -->
+  <div class="summary-bar">
+    <div class="summary-card p1"><div class="sc-phase">1. Ideation</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p2"><div class="sc-phase">2. Discover</div><div class="sc-count">2</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p3"><div class="sc-phase">3. Design/Dev</div><div class="sc-count">3</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p4"><div class="sc-phase">4. Validation</div><div class="sc-count">1</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p5"><div class="sc-phase">5. Launch</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p6"><div class="sc-phase">6. Post-Launch</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="tracker-table">
+      <colgroup>
+        <col style="width: 220px">
+        <col style="width: 140px">
+        <col style="width: 620px">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col style="width: 90px">
+        <col style="width: 110px">
+        <col style="width: 180px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Use Case</th>
+          <th>Persona</th>
+          <th>User Story</th>
+          <th class="phase-col">1</th>
+          <th class="phase-col">2</th>
+          <th class="phase-col">3</th>
+          <th class="phase-col">4</th>
+          <th class="phase-col">5</th>
+          <th class="phase-col">6</th>
+          <th>Target</th>
+          <th>Health</th>
+          <th>Next Milestone</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- ======== DATA: WORKLOAD IDENTITY (6 rows) ======== -->
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#8a3ffc;"></div>
+              <div>
+                <div class="uc-name">Unique Agent Identity</div>
+                <div class="uc-lead">Per-instance, platform-agnostic</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> Security Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Security Engineer,</span> I need to ensure that every instance of an Agent has its own identity that can be traced and verified. There are to be no shared identities, regardless of which platform is used (Kubernetes, Nomad, VMs, etc.).</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jun '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell">
+            <div class="ms-cell-title">Lighthouse pilot complete</div>
+            <div class="ms-cell-date">May 15</div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#0f62fe;"></div>
+              <div>
+                <div class="uc-name">Zero-Code Identity Delivery</div>
+                <div class="uc-lead">No app changes required</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-dev"><span class="persona-tag-dot"></span> App Developer</span></td>
+          <td><span class="story-text"><span class="role">As an Agent Developer,</span> I should not have to modify my application code to receive and use a workload identity. The platform should provide it transparently.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jun '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell">
+            <div class="ms-cell-title">Reference pod template</div>
+            <div class="ms-cell-date">May 22</div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#009d9a;"></div>
+              <div>
+                <div class="uc-name">Per-Agent Audit Attribution</div>
+                <div class="uc-lead">"Which agent did X?"</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-cao"><span class="persona-tag-dot"></span> Compliance</span></td>
+          <td><span class="story-text"><span class="role">As a Compliance Officer,</span> I need to be able to answer "which specific agent instance performed this action?" for any event in our audit logs, with cryptographic evidence.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jul '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell">
+            <div class="ms-cell-title">SIEM attribution drill</div>
+            <div class="ms-cell-date">Jun 5</div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#ee5396;"></div>
+              <div>
+                <div class="uc-name">Automatic Rotation</div>
+                <div class="uc-lead">Short-lived, self-expiring</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> Security Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Security Engineer,</span> I need agent credentials to be short-lived and rotated automatically, so that a leaked or stolen identity becomes useless within minutes — not days.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jul '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell">
+            <div class="ms-cell-title">Rotation load test</div>
+            <div class="ms-cell-date">Jun 12</div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#6929c4;"></div>
+              <div>
+                <div class="uc-name">Targeted Revocation</div>
+                <div class="uc-lead">Cut off one agent, not all</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> Security Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Security Engineer,</span> when an agent instance is compromised, I need to revoke only that specific instance without disrupting its peers or the rest of the fleet.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Aug '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell">
+            <div class="ms-cell-title">IR runbook published</div>
+            <div class="ms-cell-date">Jun 26</div>
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#da1e28;"></div>
+              <div>
+                <div class="uc-name">No Static Credentials</div>
+                <div class="uc-lead">Nothing hard-coded in images</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-cao"><span class="persona-tag-dot"></span> Compliance</span></td>
+          <td><span class="story-text"><span class="role">As a Compliance Officer,</span> I need assurance that no agent image contains hard-coded credentials, tokens, or secrets — and that this is verified continuously, not just at one point in time.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Sep '26</div></td>
+          <td><span class="status-badge at-risk"><span class="status-badge-dot"></span> At Risk</span></td>
+          <td class="ms-cell">
+            <div class="ms-cell-title">CI scan rule live</div>
+            <div class="ms-cell-date">Jul 10</div>
+          </td>
+        </tr>
+        <!-- ======== END DATA ======== -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer-strip">
+    <span class="fs-text">Advanced Architecture · Workload Identity Pattern · Use Case &amp; User Story Tracker · Confidential</span>
+    <span class="fs-logo">IBM</span>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     SLIDE 2 — RUNTIME SECURITY · SAFETY OUTCOMES
+     6 business-level user stories focused on content protection
+     ============================================================ -->
+<div class="slide" id="slide-runtime-security-safety">
+
+  <div class="top-bar">
+    <div class="tb-left">
+      <span class="tb-logo">IBM</span>
+      <div class="tb-divider"></div>
+      <span class="tb-title">Advanced Architecture · Agentic IAM Guardrails</span>
+    </div>
+    <span class="tb-right">Updated: April 22, 2026</span>
+  </div>
+
+  <div class="banner">
+    <div>
+      <div class="banner-title">Runtime Security — Safety Outcomes</div>
+      <div class="banner-desc">What must be blocked, stopped, or prevented at the platform layer — across every agent, every request, every response</div>
+    </div>
+    <div class="banner-stats">
+      <div class="stat-tile"><div class="st-label">Stories</div><div class="st-value">6</div></div>
+      <div class="stat-tile"><div class="st-label">On Track</div><div class="st-value green">6</div></div>
+      <div class="stat-tile"><div class="st-label">At Risk</div><div class="st-value yellow">0</div></div>
+    </div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-card p1"><div class="sc-phase">1. Ideation</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p2"><div class="sc-phase">2. Discover</div><div class="sc-count">1</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p3"><div class="sc-phase">3. Design/Dev</div><div class="sc-count">4</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p4"><div class="sc-phase">4. Validation</div><div class="sc-count">1</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p5"><div class="sc-phase">5. Launch</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p6"><div class="sc-phase">6. Post-Launch</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="tracker-table">
+      <colgroup>
+        <col style="width: 220px">
+        <col style="width: 140px">
+        <col style="width: 620px">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col style="width: 90px">
+        <col style="width: 110px">
+        <col style="width: 180px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Use Case</th>
+          <th>Persona</th>
+          <th>User Story</th>
+          <th class="phase-col">1</th>
+          <th class="phase-col">2</th>
+          <th class="phase-col">3</th>
+          <th class="phase-col">4</th>
+          <th class="phase-col">5</th>
+          <th class="phase-col">6</th>
+          <th>Target</th>
+          <th>Health</th>
+          <th>Next Milestone</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- ======== DATA: RUNTIME SECURITY — SAFETY (6 rows) ======== -->
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#d02670;"></div><div><div class="uc-name">Block Unsafe Prompts</div><div class="uc-lead">Before the agent acts</div></div></div></td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> Security Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Security Engineer,</span> I need unsafe prompts — attempts at file access, path traversal, or arbitrary command execution — to be blocked before the agent acts on them, without asking application teams to change their code.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">May '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Red-team suite green</div><div class="ms-cell-date">May 12</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#8a3ffc;"></div><div><div class="uc-name">Stop Prompt Injection &amp; Jailbreaks</div><div class="uc-lead">Platform-layer defense</div></div></div></td>
+          <td><span class="persona-tag p-gov"><span class="persona-tag-dot"></span> Responsible AI</span></td>
+          <td><span class="story-text"><span class="role">As a Responsible AI Officer,</span> I need prompt injection, system override, and jailbreak attempts to be stopped at the platform layer, consistently across every agent and every model we use.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">May '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Benchmark recall baseline</div><div class="ms-cell-date">May 19</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#da1e28;"></div><div><div class="uc-name">Block Harmful Intent</div><div class="uc-lead">Before processing</div></div></div></td>
+          <td><span class="persona-tag p-gov"><span class="persona-tag-dot"></span> Responsible AI</span></td>
+          <td><span class="story-text"><span class="role">As a Responsible AI Officer,</span> requests intended to cause harm — violence, self-harm, unethical action, or manipulation — must be rejected before the agent processes them.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jun '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Threshold tuning review</div><div class="ms-cell-date">May 26</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#009d9a;"></div><div><div class="uc-name">No PII or Regulated Data Leaves</div><div class="uc-lead">Outbound response inspection</div></div></div></td>
+          <td><span class="persona-tag p-cao"><span class="persona-tag-dot"></span> Compliance</span></td>
+          <td><span class="story-text"><span class="role">As a Compliance Officer,</span> no personally identifiable, confidential, or regulated data (PII, PHI, PCI) should ever appear in an agent's response. The platform must catch and block it before it leaves.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jun '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">PII blocking evidence</div><div class="ms-cell-date">Jun 5</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#ee5396;"></div><div><div class="uc-name">No Abusive or Biased Output</div><div class="uc-lead">HAP, bias, harm in responses</div></div></div></td>
+          <td><span class="persona-tag p-gov"><span class="persona-tag-dot"></span> Responsible AI</span></td>
+          <td><span class="story-text"><span class="role">As a Responsible AI Officer,</span> hate, abuse, profanity, biased content, or harmful generated text must be blocked in agent responses before they reach end users.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jul '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">FP rate review</div><div class="ms-cell-date">Jun 19</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#6929c4;"></div><div><div class="uc-name">No System Prompt Leakage</div><div class="uc-lead">Internal rules stay internal</div></div></div></td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> Security Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Security Engineer,</span> the agent's internal operating rules and system prompts must never be disclosed in its responses, whether elicited by jailbreak attempts or leaked accidentally.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jul '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Leak pattern coverage</div><div class="ms-cell-date">Jun 26</div></td>
+        </tr>
+        <!-- ======== END DATA ======== -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer-strip">
+    <span class="fs-text">Advanced Architecture · Runtime Security · Safety Outcomes · Confidential</span>
+    <span class="fs-logo">IBM</span>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     SLIDE 3 — RUNTIME SECURITY · PLATFORM &amp; OPERATIONS
+     6 business-level user stories — how the platform runs
+     ============================================================ -->
+<div class="slide" id="slide-runtime-security-ops">
+
+  <div class="top-bar">
+    <div class="tb-left">
+      <span class="tb-logo">IBM</span>
+      <div class="tb-divider"></div>
+      <span class="tb-title">Advanced Architecture · Agentic IAM Guardrails</span>
+    </div>
+    <span class="tb-right">Updated: April 22, 2026</span>
+  </div>
+
+  <div class="banner">
+    <div>
+      <div class="banner-title">Runtime Security — Platform &amp; Operations</div>
+      <div class="banner-desc">How guardrails are delivered, governed, observed, and evolved — so controls scale across the organisation without slowing agents or teams down</div>
+    </div>
+    <div class="banner-stats">
+      <div class="stat-tile"><div class="st-label">Stories</div><div class="st-value">6</div></div>
+      <div class="stat-tile"><div class="st-label">On Track</div><div class="st-value green">5</div></div>
+      <div class="stat-tile"><div class="st-label">At Risk</div><div class="st-value yellow">1</div></div>
+    </div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-card p1"><div class="sc-phase">1. Ideation</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p2"><div class="sc-phase">2. Discover</div><div class="sc-count">2</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p3"><div class="sc-phase">3. Design/Dev</div><div class="sc-count">3</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p4"><div class="sc-phase">4. Validation</div><div class="sc-count">1</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p5"><div class="sc-phase">5. Launch</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p6"><div class="sc-phase">6. Post-Launch</div><div class="sc-count zero">0</div><div class="sc-label">stories</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="tracker-table">
+      <colgroup>
+        <col style="width: 220px">
+        <col style="width: 140px">
+        <col style="width: 620px">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col style="width: 90px">
+        <col style="width: 110px">
+        <col style="width: 180px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Use Case</th>
+          <th>Persona</th>
+          <th>User Story</th>
+          <th class="phase-col">1</th>
+          <th class="phase-col">2</th>
+          <th class="phase-col">3</th>
+          <th class="phase-col">4</th>
+          <th class="phase-col">5</th>
+          <th class="phase-col">6</th>
+          <th>Target</th>
+          <th>Health</th>
+          <th>Next Milestone</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- ======== DATA: RUNTIME SECURITY — PLATFORM & OPS (6 rows) ======== -->
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#0f62fe;"></div><div><div class="uc-name">Centralized Enforcement</div><div class="uc-lead">Update once, everywhere</div></div></div></td>
+          <td><span class="persona-tag p-pe"><span class="persona-tag-dot"></span> Platform Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Platform Engineer,</span> security controls for agentic workloads must be applied centrally — so new protections roll out to every agent without asking application teams to redeploy.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">May '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Fleet-wide rollout drill</div><div class="ms-cell-date">May 15</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#009d9a;"></div><div><div class="uc-name">Governed Policy Lifecycle</div><div class="uc-lead">Author → review → promote</div></div></div></td>
+          <td><span class="persona-tag p-pol"><span class="persona-tag-dot"></span> Policy Author</span></td>
+          <td><span class="story-text"><span class="role">As a Policy Author,</span> I need to author, test, and promote guardrail policies through controlled dev → stage → prod environments, with full audit trail of who changed what and when.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jun '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Promotion pipeline live</div><div class="ms-cell-date">May 29</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#8a3ffc;"></div><div><div class="uc-name">Runtime Visibility &amp; Audit</div><div class="uc-lead">Every decision, every agent</div></div></div></td>
+          <td><span class="persona-tag p-gov"><span class="persona-tag-dot"></span> AI Governance</span></td>
+          <td><span class="story-text"><span class="role">As an AI Governance Officer,</span> I need visibility into every block decision — which category, which agent, which policy — with audit evidence suitable for regulators and executive reporting.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jun '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Exec dashboard v1</div><div class="ms-cell-date">May 22</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#ee5396;"></div><div><div class="uc-name">No Performance Regression</div><div class="uc-lead">Guardrails stay inside SLO</div></div></div></td>
+          <td><span class="persona-tag p-sre"><span class="persona-tag-dot"></span> SRE</span></td>
+          <td><span class="story-text"><span class="role">As an SRE,</span> guardrails must not degrade agent latency or availability beyond our agreed SLOs — security controls should be invisible to the user in the happy path.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jul '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">p99 latency report</div><div class="ms-cell-date">Jun 12</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#6929c4;"></div><div><div class="uc-name">Developer Ergonomics</div><div class="uc-lead">Local dev without the stack</div></div></div></td>
+          <td><span class="persona-tag p-dev"><span class="persona-tag-dot"></span> App Developer</span></td>
+          <td><span class="story-text"><span class="role">As an Agent Developer,</span> I need to be able to build and test my agent locally without having to stand up the full guardrail infrastructure — and I need clear onboarding when I'm ready to deploy.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Jul '26</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Local dev kit</div><div class="ms-cell-date">Jun 19</div></td>
+        </tr>
+        <tr>
+          <td><div class="uc-cell"><div class="uc-accent" style="background:#da1e28;"></div><div><div class="uc-name">Continuous Coverage Assurance</div><div class="uc-lead">Catch regressions automatically</div></div></div></td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> Security Eng.</span></td>
+          <td><span class="story-text"><span class="role">As a Security Engineer,</span> I need continuous, automated testing that our guardrail coverage is not regressing — so a bad policy change or a new attack pattern gets flagged immediately, not in the next audit.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">Aug '26</div></td>
+          <td><span class="status-badge at-risk"><span class="status-badge-dot"></span> At Risk</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">Nightly red-team CI</div><div class="ms-cell-date">Jul 3</div></td>
+        </tr>
+        <!-- ======== END DATA ======== -->
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer-strip">
+    <span class="fs-text">Advanced Architecture · Runtime Security · Platform &amp; Operations · Confidential</span>
+    <span class="fs-logo">IBM</span>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     BLANK SLIDE TEMPLATE — duplicate + fill in for new patterns
+     ============================================================
+     Each slide = one <div class="slide"> with 5 standard regions:
+       1. .top-bar        — IBM logo + breadcrumb + date
+       2. .banner         — title + description + stat tiles
+       3. .summary-bar    — 6 lifecycle-phase cards (p1..p6)
+       4. .table-wrap     — the use-case / user-story tracker
+       5. .footer-strip   — black strip with context + IBM logo
+
+     Phase dot states:
+       <div class="phase-dot done"></div>     green check
+       <div class="phase-dot active"></div>   blue pulsing (current)
+       <div class="phase-dot future"></div>   grey outline
+       <div class="phase-dot blocked"></div>  red (at-risk)
+
+     Persona tag classes (pick the closest):
+       .p-sec  Security Eng.     .p-gov  Responsible AI / Governance
+       .p-dev  App Developer     .p-sre  SRE / IR
+       .p-pol  Policy Author     .p-cao  Compliance / Audit
+       .p-pe   Platform Eng.
+
+     Health badges:  on-track · at-risk · backlog
+     Lifecycle phases: 1 Ideation · 2 Discover · 3 Design/Dev
+                       4 Validation · 5 Launch · 6 Post-Launch
+     ============================================================ -->
+<!--
+<div class="slide" id="slide-{{PATTERN_SLUG}}">
+
+  <div class="top-bar">
+    <div class="tb-left">
+      <span class="tb-logo">IBM</span>
+      <div class="tb-divider"></div>
+      <span class="tb-title">Advanced Architecture · {{PATTERN_GROUP}}</span>
+    </div>
+    <span class="tb-right">Updated: {{DATE}}</span>
+  </div>
+
+  <div class="banner">
+    <div>
+      <div class="banner-title">{{PATTERN_NAME}} — Use Case &amp; User Story Tracker</div>
+      <div class="banner-desc">{{ONE_LINE_OUTCOME_DESCRIPTION}}</div>
+    </div>
+    <div class="banner-stats">
+      <div class="stat-tile"><div class="st-label">Stories</div><div class="st-value">{{N}}</div></div>
+      <div class="stat-tile"><div class="st-label">On Track</div><div class="st-value green">{{N}}</div></div>
+      <div class="stat-tile"><div class="st-label">At Risk</div><div class="st-value yellow">{{N}}</div></div>
+    </div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="summary-card p1"><div class="sc-phase">1. Ideation</div><div class="sc-count">{{N}}</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p2"><div class="sc-phase">2. Discover</div><div class="sc-count">{{N}}</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p3"><div class="sc-phase">3. Design/Dev</div><div class="sc-count">{{N}}</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p4"><div class="sc-phase">4. Validation</div><div class="sc-count">{{N}}</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p5"><div class="sc-phase">5. Launch</div><div class="sc-count">{{N}}</div><div class="sc-label">stories</div></div>
+    <div class="summary-card p6"><div class="sc-phase">6. Post-Launch</div><div class="sc-count">{{N}}</div><div class="sc-label">stories</div></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="tracker-table">
+      <colgroup>
+        <col style="width: 220px"><col style="width: 140px"><col style="width: 620px">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col class="phase-col"><col class="phase-col"><col class="phase-col">
+        <col style="width: 90px"><col style="width: 110px"><col style="width: 180px">
+      </colgroup>
+      <thead><tr>
+        <th>Use Case</th><th>Persona</th><th>User Story</th>
+        <th class="phase-col">1</th><th class="phase-col">2</th><th class="phase-col">3</th>
+        <th class="phase-col">4</th><th class="phase-col">5</th><th class="phase-col">6</th>
+        <th>Target</th><th>Health</th><th>Next Milestone</th>
+      </tr></thead>
+      <tbody>
+
+        REPEAT ROW — one per use case / user story:
+        <tr>
+          <td>
+            <div class="uc-cell">
+              <div class="uc-accent" style="background:#0f62fe;"></div>
+              <div>
+                <div class="uc-name">{{USE_CASE_NAME}}</div>
+                <div class="uc-lead">{{SHORT_TAGLINE}}</div>
+              </div>
+            </div>
+          </td>
+          <td><span class="persona-tag p-sec"><span class="persona-tag-dot"></span> {{PERSONA}}</span></td>
+          <td><span class="story-text"><span class="role">As a {{ROLE}},</span> I need {{OUTCOME}} so that {{BUSINESS_REASON}}.</span></td>
+          <td class="phase-cell"><div class="phase-dot done"></div></td>
+          <td class="phase-cell"><div class="phase-dot active"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td class="phase-cell"><div class="phase-dot future"></div></td>
+          <td><div class="timeline-cell">{{TARGET}}</div></td>
+          <td><span class="status-badge on-track"><span class="status-badge-dot"></span> On Track</span></td>
+          <td class="ms-cell"><div class="ms-cell-title">{{MILESTONE}}</div><div class="ms-cell-date">{{DATE}}</div></td>
+        </tr>
+
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer-strip">
+    <span class="fs-text">Advanced Architecture · {{PATTERN_NAME}} · Confidential</span>
+    <span class="fs-logo">IBM</span>
+  </div>
+</div>
+-->
+
+</body>
+</html>

@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: 'false'
+      labels:
+        app: keycloak
+    spec:
+      serviceAccountName: keycloak
+      enableServiceLinks: false
+      containers:
+        - name: keycloak
+          image: keycloak-vault-rar:local
+          imagePullPolicy: Never
+          args:
+            - start-dev
+            - --import-realm
+            - --features=ciba
+            - --spi-ciba-auth-channel-ciba-http-auth-channel-http-authentication-channel-uri=http://ciba-channel.default.svc.cluster.local:8093/ciba/authn
+          ports:
+            - containerPort: 8080
+            - containerPort: 9000
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: admin
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-admin-credentials
+                  key: password
+            - name: KC_DB
+              value: postgres
+            - name: KC_DB_URL
+              value: "jdbc:postgresql://postgres.default.svc.cluster.local:5432/keycloak"
+            - name: KC_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-credentials
+                  key: username
+            - name: KC_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: keycloak-db-credentials
+                  key: password
+            # Browser-facing issuer/authorize/token/JWKS URLs stamped into
+            # every token's iss claim — must equal the NodePort the host
+            # reaches Keycloak at (bootstrap.sh publishes 8081->30081), since
+            # Vault's bound_issuer, USER_MCP_ISSUER, and web-app's id_token
+            # verification all check against this exact value.
+            - name: KC_HOSTNAME
+              value: "http://localhost:8081"
+            - name: KC_HOSTNAME_BACKCHANNEL_DYNAMIC
+              value: "true"
+            - name: KC_HTTP_MANAGEMENT_PORT
+              value: "9000"
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+          volumeMounts:
+            - name: keycloak-realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+      volumes:
+        - name: keycloak-realm
+          configMap:
+            name: keycloak-realm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+spec:
+  selector:
+    app: keycloak
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+    - name: health
+      port: 9000
+      targetPort: 9000
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: keycloak

@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: user-mcp
+  template:
+    metadata:
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: 'false'
+
+        # ---- consul-mcp-authz discovery ----
+        # Marks this workload as an MCP server — the destination side of
+        # rule entries. Tool surface is discovered LIVE by
+        # consul-mcp-authz via `tools/list` over the mesh, so no
+        # tools annotation is needed here.
+        consul.hashicorp.com/service-meta-agent-tool-authz-role: "mcp-server"
+
+        # ai-agent is still the actor executing a CIBA-approved tool call -
+        # the human's approval just gates it, it doesn't change who's
+        # calling. Keycloak's CIBA client never gets a delegation_actor form
+        # field the way token-exchange's OBO flow does (see ciba_client.py),
+        # so CIBA-issued JWTs carry no `act` claim, and Vault's Agent
+        # Registry ceiling has no actor to match - database/creds and
+        # transform/encode calls made with a CIBA JWT are denied regardless
+        # of the human's own baseline ACL. Fetching the same actor identity
+        # token ai-agent itself uses (agent-role is bound only by JWT
+        # audience, not by service account, so any pod may authenticate as
+        # it - see infra/local-minikube/configure.sh) lets ciba_client.py
+        # send delegation_actor too, matching the OBO path.
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "agent-role"
+        vault.hashicorp.com/auth-type: "jwt"
+        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
+        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
+        vault.hashicorp.com/agent-inject-secret-actor-token: "identity/oidc/token/agent-role"
+        vault.hashicorp.com/agent-inject-template-actor-token: |
+          {{- with secret "identity/oidc/token/agent-role" -}}
+          {{ .Data.token }}
+          {{- end -}}
+        vault.hashicorp.com/tls-skip-verify: "true"
+      labels:
+        app: user-mcp
+    spec:
+      serviceAccountName: user-mcp
+      enableServiceLinks: false
+      containers:
+        - name: user-mcp
+          image: panchalravi/agentguard-user-mcp:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8090
+          env:
+            - name: USER_MCP_ACTOR_TOKEN_PATH
+              value: /vault/secrets/actor-token
+          volumeMounts:
+            - name: user-mcp-env
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+          resources:
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+            requests:
+              memory: "128Mi"
+              cpu: "128m"
+      volumes:
+        - name: user-mcp-env
+          secret:
+            secretName: user-mcp-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-mcp
+spec:
+  selector:
+    app: user-mcp
+  ports:
+    - port: 8090
+      targetPort: 8090
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: user-mcp

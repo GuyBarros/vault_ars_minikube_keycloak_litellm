@@ -1,0 +1,156 @@
+---
+# Pilot OPA Deployment for data-driven MCP tool authorization.
+#
+# Differences vs. deploy-k8s/agent-mcp-authz/opa-mcp-authz.yaml:
+#  - Adds vault-agent annotations to fetch the catalog from Vault KV v2
+#    and render it into /vault/secrets/catalog.json.
+#  - Adds --watch and /vault/secrets to OPA args so the catalog reloads
+#    automatically on Vault Agent re-render. No pod restart needed.
+#  - The .rego policy itself still ships via ConfigMap (it's source code,
+#    not operator-managed config).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opa-mcp-authz
+  namespace: default
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-mcp-authz-config
+  namespace: default
+data:
+  config.yaml: |
+    plugins:
+      envoy_ext_authz_grpc:
+        addr: :9191
+        path: mcp/authz/decision
+        dry-run: false
+        enable-reflection: true
+    decision_logs:
+      console: true
+    status:
+      console: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa-mcp-authz
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opa-mcp-authz
+  template:
+    metadata:
+      labels:
+        app: opa-mcp-authz
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: "false"
+
+        # ---- Vault Agent sidecar: pulls the rule catalog from Vault KV v2 ----
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "opa-mcp-authz"
+        vault.hashicorp.com/auth-type: "jwt"
+        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
+        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
+
+        # Render the KV payload at data.policy.mcp_authz so it does not
+        # collide with the mcp.authz package namespace used by the .rego.
+        # KV v2 places user content under .Data.data — we forward it as-is.
+        #
+        # The destination filename MUST be `data.json` (not `catalog.json`):
+        # OPA's positional file loader merges files named `data.json` into
+        # the parent directory's data namespace, but namespaces other names
+        # under a key matching the filename. Since `/vault/secrets` is the
+        # load root, `data.json` content lands at `data.…` (we want), while
+        # `catalog.json` would land at `data.catalog.…` and the policy's
+        # read of `data.policy.mcp_authz.rules` would resolve to undefined
+        # → default-deny everywhere.
+        vault.hashicorp.com/template-static-secret-render-interval: "30s"
+        vault.hashicorp.com/agent-inject-secret-data.json: "opa-policies/data/mcp-authz/catalog"
+        vault.hashicorp.com/agent-inject-template-data.json: |
+          {{- with secret "opa-policies/data/mcp-authz/catalog" -}}
+          {"policy":{"mcp_authz":{{ .Data.data | toJSON }}}}
+          {{- end -}}
+        vault.hashicorp.com/tls-skip-verify: "true"
+    spec:
+      serviceAccountName: opa-mcp-authz
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:latest-envoy-static
+          args:
+            - "run"
+            - "--server"
+            - "--config-file=/config/config.yaml"
+            - "--addr=127.0.0.1:8181"
+            - "--diagnostic-addr=0.0.0.0:8282"
+            - "--log-level=info"
+            - "--log-format=json"
+            # Skip Kubernetes ConfigMap symlink dirs (..data, ..2026_...)
+            # — otherwise OPA loads the same .rego file 3x and rejects
+            # duplicate `default` rules.
+            - "--ignore=.*"
+            # Live-reload both the policy ConfigMap and the vault-agent
+            # rendered data document. fsnotify-based; reload is atomic.
+            - "--watch"
+            - "/policy"
+            - "/vault/secrets"
+          ports:
+            - name: grpc
+              containerPort: 9191
+            - name: diag
+              containerPort: 8282
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: policy
+              mountPath: /policy
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8282
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8282
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: opa-mcp-authz-config
+        - name: policy
+          configMap:
+            name: opa-mcp-authz-policy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-mcp-authz
+  namespace: default
+  labels:
+    app: opa-mcp-authz
+spec:
+  selector:
+    app: opa-mcp-authz
+  ports:
+    - name: grpc
+      port: 9191
+      targetPort: 9191
+      appProtocol: grpc

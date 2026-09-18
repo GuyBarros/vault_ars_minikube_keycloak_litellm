@@ -1,0 +1,197 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: ai-agent
+  namespace: default
+spec:
+  protocol: http
+  envoyExtensions:
+  - name: "builtin/lua" # has to be this so it can be recognized by envoy
+    arguments:
+      proxyType: "connect-proxy"
+      listener: "inbound"
+      script: |-
+        -- ==========================================================
+        -- Shared helpers: loaded once, reused by both callbacks.
+        -- ==========================================================
+        local string_sub = string.sub
+        local string_find = string.find
+        local string_len = string.len
+
+        local OPA_TIMEOUT_MS = 5000
+        local OPA_PATH_SECURITY = "/v1/data/app/security"
+        local OPA_PATH_MASKING = "/v1/data/app/masking/masked_result"
+
+        -- Cluster resolution: build the OPA FQDN from Consul dynamic metadata.
+        -- Returns nil if required fields are missing (fail-closed upstream).
+        local function resolve_opa_service(handle)
+          local md = handle:streamInfo():dynamicMetadata()
+          if not md then return nil end
+          local consul_ns = md:get("consul")
+          if not consul_ns or type(consul_ns) ~= "table" then return nil end
+          local trust_domain = consul_ns["trust-domain"]
+          local datacenter = consul_ns["datacenter"]
+          if not trust_domain or not datacenter then return nil end
+          return "opa-service.opa." .. datacenter .. ".internal." .. trust_domain
+        end
+
+        local function is_json(str)
+          if not str or str == '' then return false end
+          local first = string_sub(str, 1, 1)
+          local last = string_sub(str, -1)
+          if (first == '{' and last == '}') or (first == '[' and last == ']') then
+            return true
+          end
+          return false
+        end
+
+        -- Ensure body_str is a valid JSON value: either pass through JSON
+        -- objects/arrays, or wrap bare strings in quotes.
+        local function ensure_json_value(body_str)
+          if is_json(body_str) then return body_str end
+          local first = string_sub(body_str, 1, 1)
+          local last = string_sub(body_str, -1)
+          if first == '"' and last == '"' then return body_str end
+          return '"' .. body_str .. '"'
+        end
+
+        -- OPA call: POST a base64-wrapped input to the given policy path.
+        -- Returns response_body (string) or nil on transport failure.
+        local function call_opa(handle, opa_service, path, body_str)
+          local headers = {
+            [":method"] = "POST",
+            [":path"] = path,
+            [":authority"] = opa_service,
+            ["content-type"] = "application/json",
+          }
+          local encoded = handle:base64Escape(body_str)
+          local opa_body = '{"input":"' .. encoded .. '"}'
+          local _, response_body = handle:httpCall(
+            opa_service, headers, opa_body, OPA_TIMEOUT_MS
+          )
+          return response_body
+        end
+
+        -- Envelope parsing: extract the "result" object substring from an OPA
+        -- response of the form {"result": { ... }}. Nested braces are counted;
+        -- braces inside strings are a known limitation (see review notes).
+        local function extract_result_object(response_body)
+          local result_start = string_find(response_body, '"result"%s*:%s*{')
+          if not result_start then return nil end
+          local prefix_len = string_len('"result":{')
+          local i = result_start + prefix_len
+          local brace_count = 1
+          while i <= #response_body do
+            local c = string_sub(response_body, i, i)
+            if c == '{' then
+              brace_count = brace_count + 1
+            elseif c == '}' then
+              brace_count = brace_count - 1
+              if brace_count == 0 then
+                return string_sub(
+                  response_body, result_start + string_len('"result":'), i
+                )
+              end
+            end
+            i = i + 1
+          end
+          return nil
+        end
+
+        -- Security policy: block if any field in "result" is true.
+        local function is_blocked(response_body)
+          local result_obj = extract_result_object(response_body)
+          if not result_obj then return false end
+          return string_find(result_obj, ':%s*true') ~= nil
+        end
+
+        -- Failure policy: what to do when OPA is unreachable. Currently
+        -- fail-open (log and continue) to match existing behavior. Flip to
+        -- fail-closed by calling handle:respond(...) here.
+        local function on_opa_failure(handle, context)
+          handle:logWarn("OPA call failed: " .. context)
+          -- handle:respond({[":status"]="503"}, "policy service unavailable")
+        end
+
+        -- ==========================================================
+        -- Request path: enforce inbound security policy via OPA.
+        -- ==========================================================
+        function envoy_on_request(request_handle)
+          request_handle:logInfo("Inbound Request")
+
+          local opa_service = resolve_opa_service(request_handle)
+          if not opa_service then
+            request_handle:logWarn("Missing Consul metadata; skipping OPA security check")
+            return
+          end
+          request_handle:logInfo("OPA service: " .. opa_service)
+
+          local body = request_handle:body(true)
+          local body_str = body:getBytes(0, body:length())
+          request_handle:logInfo("Inbound Request Body: " .. body_str)
+
+          local response_body = call_opa(
+            request_handle, opa_service, OPA_PATH_SECURITY, ensure_json_value(body_str)
+          )
+          if not response_body then
+            on_opa_failure(request_handle, "pre-invoke security check")
+            return
+          end
+          request_handle:logInfo("OPA response, pre-invoke agent: " .. response_body)
+
+          if is_blocked(response_body) then
+            request_handle:respond(
+              {[":status"] = "400", ["content-type"] = "text/plain"},
+              "This content was blocked due to security policy violation"
+            )
+            return
+          end
+        end
+
+        -- ==========================================================
+        -- Response path: mask outbound payload via OPA (200 only).
+        -- ==========================================================
+        function envoy_on_response(response_handle)
+          response_handle:logInfo("Sending Response")
+          local body = response_handle:body(true)
+
+          local status_code = tonumber(response_handle:headers():get(":status"))
+          response_handle:logInfo("OPA outbound response status: " .. tostring(status_code))
+
+          if not status_code or status_code ~= 200 then
+            response_handle:logInfo("Skipping OPA /mask call for non-200 response")
+            if body then
+              response_handle:logInfo("Response Body: " .. body:getBytes(0, body:length()))
+            end
+            return
+          end
+
+          if not body then
+            response_handle:logInfo("Response Body: <empty>")
+            return
+          end
+
+          local opa_service = resolve_opa_service(response_handle)
+          if not opa_service then
+            response_handle:logWarn("Missing Consul metadata; skipping OPA masking")
+            return
+          end
+
+          local body_str = body:getBytes(0, body:length())
+          local response_body = call_opa(
+            response_handle, opa_service, OPA_PATH_MASKING, body_str
+          )
+
+          response_handle:logInfo("Response Body: " .. body_str)
+          if not response_body then
+            on_opa_failure(response_handle, "post-invoke masking")
+            return
+          end
+          response_handle:logInfo("OPA response, post-invoke agent: " .. response_body)
+
+          response_handle:body():setBytes(response_body)
+          response_handle:headers():replace("content-type", "application/json")
+          response_handle:headers():replace(
+            "content-length", tostring(response_handle:body():length())
+          )
+        end

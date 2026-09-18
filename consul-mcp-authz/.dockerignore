@@ -1,0 +1,25 @@
+# Python
+api/.venv
+api/__pycache__
+api/**/__pycache__
+api/*.pyc
+api/.pytest_cache
+api/.mypy_cache
+api/tests
+api/.env
+api/.gitignore
+
+# Node / Next.js
+ui/node_modules
+ui/.next
+ui/.swc
+ui/.turbo
+ui/tsconfig.tsbuildinfo
+ui/.env.local
+ui/.env*.local
+
+# Repo
+.git
+.gitignore
+README.md
+**/.DS_Store

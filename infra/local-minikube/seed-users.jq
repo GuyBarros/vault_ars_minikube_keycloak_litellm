@@ -1,0 +1,1 @@
+.[] | "INSERT INTO users (first_name, last_name, ssn, phone, email, credit_card_number, ip_address) VALUES ('\(.first_name)', '\(.last_name)', '\(.ssn)', '\(.phone)', '\(.email)', '\(.credit_card_number)', '\(.ip_address)') ON CONFLICT (email) DO NOTHING;"

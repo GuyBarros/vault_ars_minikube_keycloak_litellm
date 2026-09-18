@@ -1,0 +1,21 @@
+# Local-only direct access to the web app at localhost:30080 (no kubectl
+# port-forward needed - see bootstrap.sh's --ports publishing).
+#
+# This patches the Service that deploy-k8s/web-app-gateway.yaml's Consul API
+# Gateway auto-creates (named after the Gateway, "web-api-gateway") to a fixed
+# NodePort. Deliberately NOT a NodePort/patch on the "web" Service itself:
+# deploy-k8s/service-intentions.yaml only allows "web-api-gateway" as a source
+# for "web", so Envoy's inbound listener silently drops any other caller
+# (connection accepted, then closed - "empty reply from server") - the
+# gateway is the one mesh-authorized front door, so route through it instead.
+# Apply deploy-k8s/web-app-gateway.yaml first (creates this Service).
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-api-gateway
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30080

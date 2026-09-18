@@ -1,0 +1,35 @@
+# Dedicated Consul API Gateway front door for ciba-channel's human approval
+# page, mirroring keycloak-gateway.yaml. Browsers are not mesh workloads, so
+# they cannot pass service-intentions on ciba-channel's own inbound sidecar
+# directly (see service-intentions.yaml's "ciba-channel" entry, which only
+# allows "keycloak" as a source) - the gateway is the one mesh-authorized
+# caller, and human approval traffic terminates here instead.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: ciba-channel-gateway
+spec:
+  gatewayClassName: consul
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: ciba-channel-route
+spec:
+  parentRefs:
+    - name: ciba-channel-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: ciba-channel
+          port: 8093

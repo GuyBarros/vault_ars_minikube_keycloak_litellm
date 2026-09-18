@@ -1,0 +1,34 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ProxyDefaults
+metadata:
+  name: global
+spec:
+  accessLogs:
+    enabled: false
+  config:
+    protocol: http
+    # envoy_extra_static_clusters_json: |-
+    #   {
+    #     "name": "opa-service-cluster",
+    #     "type": "STRICT_DNS",
+    #     "connect_timeout": "5s",
+    #     "load_assignment": {
+    #       "cluster_name": "opa-service-cluster",
+    #       "endpoints": [
+    #         {
+    #           "lb_endpoints": [
+    #             {
+    #               "endpoint": {
+    #                 "address": {
+    #                   "socket_address": {
+    #                     "address": "opa-service.opa.svc.cluster.local",
+    #                     "port_value": 80
+    #                   }
+    #                 }
+    #               }
+    #             }
+    #           ]
+    #         }
+    #       ]
+    #     }
+    #   }

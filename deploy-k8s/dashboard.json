@@ -1,0 +1,1598 @@
+{
+  "apiVersion": "dashboard.grafana.app/v1beta1",
+  "kind": "DashboardWithAccessInfo",
+  "metadata": {
+    "name": "qTEWJ0XSkm",
+    "namespace": "default",
+    "uid": "71575cab-1a66-4a01-ac8f-058076d06c34",
+    "resourceVersion": "1777211290493019",
+    "generation": 12,
+    "creationTimestamp": "2026-04-26T13:45:27Z",
+    "labels": {},
+    "annotations": {
+      "grafana.app/createdBy": "user:afk9c1b9xtgxsd",
+      "grafana.app/folder": "",
+      "grafana.app/saved-from-ui": "Grafana v12.4.2 (ebade4c739)",
+      "grafana.app/updatedBy": "user:afk9c1b9xtgxsd",
+      "grafana.app/updatedTimestamp": "2026-04-26T13:48:10Z"
+    }
+  },
+  "spec": {
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": {
+            "type": "datasource",
+            "uid": "grafana"
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "target": {
+            "limit": 100,
+            "matchAny": false,
+            "tags": [],
+            "type": "dashboard"
+          },
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 0,
+    "links": [],
+    "panels": [
+      {
+        "collapsed": true,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "id": 41,
+        "panels": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 24,
+              "x": 0,
+              "y": 1
+            },
+            "id": 18,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(irate(envoy_cluster_upstream_rq_total{local_cluster=~\"$source_service\",\nconsul_destination_service=~\"$destination_service\"}[10m])) by ( local_cluster, consul_destination_service)",
+                "interval": "",
+                "legendFormat": "{{local_cluster}} -> {{consul_destination_service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Upstream Traffic: $source_service -> $destination_service",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "ms"
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 10,
+              "w": 12,
+              "x": 0,
+              "y": 95
+            },
+            "id": 22,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "histogram_quantile(0.95, sum(rate(envoy_cluster_upstream_rq_time_bucket{local_cluster=~\"$source_service\",consul_destination_target!=\"\"}[10m])) by (le, consul_destination_target))",
+                "interval": "",
+                "legendFormat": "{{consul_destination_service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Upstream Request Response Timeliness: $source_service ->  $destination_service",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 10,
+              "w": 12,
+              "x": 12,
+              "y": 95
+            },
+            "id": 20,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(irate(envoy_cluster_upstream_rq_xx{envoy_response_code_class!=\"5\",local_cluster=~\"$source_service\",\nconsul_destination_service=~\"$destination_service\"}[10m])) by (local_cluster, consul_destination_service) / sum(irate(envoy_cluster_upstream_rq_xx{local_cluster=~\"$source_service\",consul_destination_service=~\"$destination_service\"}[10m])) by (local_cluster,consul_destination_service)\n",
+                "interval": "",
+                "legendFormat": "{{local_cluster}} -> {{consul_destination_service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Upstream Request Success Rate: $source_service ->  $destination_service",
+            "type": "timeseries"
+          }
+        ],
+        "title": "Outbound Traffic Monitoring",
+        "type": "row"
+      },
+      {
+        "collapsed": true,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 1
+        },
+        "id": 42,
+        "panels": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 2,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 9,
+              "w": 12,
+              "x": 0,
+              "y": 2
+            },
+            "id": 2,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(irate(envoy_cluster_upstream_rq_total{consul_destination_datacenter=\"dc1\", local_cluster=~\"$source_service\",\nconsul_destination_service=~\"$destination_service\"}[10m])) by (consul_destination_service, local_cluster)\n",
+                "format": "time_series",
+                "interval": "",
+                "legendFormat": "{{local_cluster}} -> {{consul_destination_service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Requests Sent: $source_service ->  $destination_service",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 9,
+              "w": 12,
+              "x": 12,
+              "y": 2
+            },
+            "id": 43,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(irate(envoy_cluster_upstream_rq_xx{envoy_response_code_class!=\"5\", local_cluster=~\"$source_service\", consul_destination_service=~\"$destination_service\"}[10m])) by (local_cluster, consul_destination_service) / sum(irate(envoy_cluster_upstream_rq_xx{consul_destination_service=~\"$destination_service\"}[10m])) by (local_cluster , consul_destination_service)",
+                "interval": "",
+                "legendFormat": "",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Request Success Rate: $source_service ->  $destination_service",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 9,
+              "w": 12,
+              "x": 0,
+              "y": 56
+            },
+            "id": 12,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(increase(envoy_http_downstream_rq_xx{local_cluster=~\"$source_service\", envoy_http_conn_manager_prefix=\"public_listener\"}[10m])) by (local_cluster, envoy_response_code_class)",
+                "interval": "",
+                "legendFormat": "{{envoy_response_code_class}} - {{local_cluster}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Response Success by Status Code: $source_service ->  $destination_service",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                },
+                "unit": "ms"
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 9,
+              "w": 12,
+              "x": 12,
+              "y": 56
+            },
+            "id": 6,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "table",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "histogram_quantile(0.95, sum(rate(envoy_cluster_upstream_rq_time_bucket{consul_destination_datacenter=\"dc1\", consul_destination_service=~\"$destination_service\",local_cluster=~\"$source_service\"}[10m])) by (le, cluster, local_cluster, consul_destination_service))",
+                "interval": "",
+                "legendFormat": "{{local_cluster}} -> {{consul_destination_service}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Request Duration: $source_service -> $destination_service",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 65
+            },
+            "id": 44,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(increase(envoy_http_downstream_rq_total{local_cluster=~\"$source_service\", envoy_http_conn_manager_prefix=\"public_listener\"}[10m])) by (local_cluster)",
+                "interval": "",
+                "legendFormat": "{{local_cluster}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Response Success: $source_service ",
+            "type": "timeseries"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "prometheus"
+            },
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "axisBorderShow": false,
+                  "axisCenteredZero": false,
+                  "axisColorMode": "text",
+                  "axisLabel": "",
+                  "axisPlacement": "auto",
+                  "barAlignment": 0,
+                  "barWidthFactor": 0.6,
+                  "drawStyle": "line",
+                  "fillOpacity": 0,
+                  "gradientMode": "none",
+                  "hideFrom": {
+                    "legend": false,
+                    "tooltip": false,
+                    "viz": false
+                  },
+                  "insertNulls": false,
+                  "lineInterpolation": "linear",
+                  "lineWidth": 1,
+                  "pointSize": 5,
+                  "scaleDistribution": {
+                    "type": "linear"
+                  },
+                  "showPoints": "auto",
+                  "showValues": false,
+                  "spanNulls": false,
+                  "stacking": {
+                    "group": "A",
+                    "mode": "none"
+                  },
+                  "thresholdsStyle": {
+                    "mode": "off"
+                  }
+                },
+                "mappings": [],
+                "thresholds": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": 0
+                    },
+                    {
+                      "color": "red",
+                      "value": 80
+                    }
+                  ]
+                }
+              },
+              "overrides": []
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 65
+            },
+            "id": 8,
+            "options": {
+              "legend": {
+                "calcs": [],
+                "displayMode": "list",
+                "placement": "right",
+                "showLegend": true
+              },
+              "tooltip": {
+                "hideZeros": false,
+                "mode": "single",
+                "sort": "none"
+              }
+            },
+            "pluginVersion": "12.4.2",
+            "targets": [
+              {
+                "datasource": {
+                  "type": "prometheus",
+                  "uid": "${DS_PROMETHEUS}"
+                },
+                "editorMode": "code",
+                "exemplar": true,
+                "expr": "sum(irate(envoy_http_downstream_rq_total{local_cluster=~\"$source_service\",envoy_http_conn_manager_prefix=\"public_listener\"}[10m])) by (local_cluster)",
+                "interval": "",
+                "legendFormat": "{{local_cluster}}",
+                "range": true,
+                "refId": "A"
+              }
+            ],
+            "title": "Request Response Rate: $source_service",
+            "type": "timeseries"
+          }
+        ],
+        "title": "Inbound Traffic Monitoring",
+        "type": "row"
+      },
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 2
+        },
+        "id": 46,
+        "panels": [],
+        "title": "Logs",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "P8E80F9AEF21F6940"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "custom": {
+              "align": "auto",
+              "cellOptions": {
+                "type": "auto"
+              },
+              "footer": {
+                "reducers": []
+              },
+              "inspect": true
+            },
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": 0
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Time"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 215
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byRegexp",
+                "options": "/.*request_id:/"
+              },
+              "properties": []
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Line"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 638
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "labels"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 275
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "tsNs"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 120
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "labelTypes"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 246
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "detected_level"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 139
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "message"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 601
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "request_id"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 308
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "timestamp"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 279
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "container"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 166
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "level"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 162
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "app"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 139
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Log Level"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 148
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Container"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 174
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "App"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 206
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Message"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 791
+                },
+                {
+                  "id": "custom.wrapText",
+                  "value": true
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byName",
+                "options": "Request ID"
+              },
+              "properties": [
+                {
+                  "id": "custom.width",
+                  "value": 316
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 15,
+          "w": 24,
+          "x": 0,
+          "y": 3
+        },
+        "id": 45,
+        "options": {
+          "cellHeight": "sm",
+          "showHeader": true,
+          "sortBy": [
+            {
+              "desc": false,
+              "displayName": "Time"
+            }
+          ]
+        },
+        "pluginVersion": "12.4.2",
+        "targets": [
+          {
+            "datasource": {
+              "type": "loki",
+              "uid": "P8E80F9AEF21F6940"
+            },
+            "direction": "backward",
+            "editorMode": "code",
+            "expr": "  {cluster=\"ai-security-demo\", service_name=~\"$source_service\", container!~\"vault-agent\", request_id!~\"-|''\"}        \n    |= \"request_id\"\n    | json\n    | regexp `(?:\"request_id\":\\s*\"|request_id=)(?P<request_id_rx>[a-f0-9\\-]+)`\n    | regexp `(?:\"message\":\\s*\"|message=\")(?P<message_rx>[^\"]*)\"`                                                                         \n    | label_format request_id=`{{ or .request_id .request_id_rx }}`, message=`{{ or .message .message_rx }}` \n    | request_id !~ \"-|^$\"                            \n    | request_id=~\"$request_id\"\n    | message =~ \"(?i).*${message_search:regex}.*\"",
+            "queryType": "range",
+            "refId": "A"
+          }
+        ],
+        "title": "Raw Logs",
+        "transformations": [
+          {
+            "id": "extractFields",
+            "options": {
+              "delimiter": ",",
+              "format": "json",
+              "keepTime": false,
+              "replace": false,
+              "source": "labels"
+            }
+          },
+          {
+            "filter": {
+              "id": "byRefId",
+              "options": ""
+            },
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "__error__": true,
+                "__error_details__": true,
+                "actor_agent_id": true,
+                "agent_id": true,
+                "attempt": true,
+                "auth_scope": true,
+                "authorization_present": true,
+                "body": true,
+                "cache_hit": true,
+                "client_ip": true,
+                "cluster": true,
+                "count": true,
+                "db_username": true,
+                "delayMs": true,
+                "detected_level": true,
+                "direction": true,
+                "downstream_authorization_present": true,
+                "duration_ms": true,
+                "environment": true,
+                "err": true,
+                "error": true,
+                "error_message": true,
+                "event": true,
+                "expiry_time": true,
+                "filename": true,
+                "first_name": true,
+                "func_name": true,
+                "function": true,
+                "host": true,
+                "host_ip": true,
+                "host_name": true,
+                "hostname": true,
+                "http_method": true,
+                "http_path": true,
+                "http_scheme": true,
+                "id": true,
+                "is_injection": true,
+                "is_string": true,
+                "is_unsafe": true,
+                "job": true,
+                "labelTypes": true,
+                "labels": true,
+                "level": true,
+                "line": true,
+                "line_number": true,
+                "lineno": true,
+                "logger": true,
+                "mask_detected": true,
+                "maxAttempts": true,
+                "message_rx": true,
+                "method": true,
+                "method_name": true,
+                "module": true,
+                "namespace": true,
+                "nextAttempt": true,
+                "node_name": true,
+                "obo_token_present": true,
+                "operation": true,
+                "output_bytes": true,
+                "path": true,
+                "pii_changed": true,
+                "pod": true,
+                "policy_id": true,
+                "preferred_username": true,
+                "process": true,
+                "process_id": true,
+                "process_name": true,
+                "request_id": false,
+                "request_id_extracted": true,
+                "request_id_rx": true,
+                "request_path": true,
+                "response_hap": true,
+                "response_harm": true,
+                "response_jailbreak": true,
+                "response_prompt_safety_risk": true,
+                "response_text": true,
+                "response_unethical_behavior": true,
+                "rootCause": true,
+                "scope": true,
+                "service": true,
+                "service_name": true,
+                "severity": true,
+                "stage": true,
+                "status": true,
+                "status_code": true,
+                "stream": true,
+                "thread": true,
+                "thread_name": true,
+                "timestamp": true,
+                "token_exchange_url": true,
+                "tool": true,
+                "tool_name": true,
+                "tool_output_length": true,
+                "tsNs": true,
+                "url": true,
+                "user_agent": true,
+                "user_mcp_url": true,
+                "user_message": true
+              },
+              "includeByName": {},
+              "indexByName": {
+                "Time": 0,
+                "__error__": 45,
+                "__error_details__": 46,
+                "app": 4,
+                "client_ip": 30,
+                "cluster": 6,
+                "container": 5,
+                "detected_level": 7,
+                "environment": 38,
+                "event": 8,
+                "filename": 9,
+                "function": 10,
+                "host": 39,
+                "host_ip": 11,
+                "host_name": 12,
+                "hostname": 40,
+                "job": 13,
+                "level": 3,
+                "line": 14,
+                "logger": 15,
+                "message": 16,
+                "message_rx": 17,
+                "method": 31,
+                "module": 18,
+                "namespace": 19,
+                "node_name": 20,
+                "path": 32,
+                "pod": 21,
+                "process": 41,
+                "process_id": 22,
+                "process_name": 42,
+                "request_id": 2,
+                "request_id_extracted": 23,
+                "request_id_rx": 24,
+                "request_path": 43,
+                "response_hap": 33,
+                "response_harm": 34,
+                "response_jailbreak": 35,
+                "response_prompt_safety_risk": 36,
+                "response_unethical_behavior": 37,
+                "service": 25,
+                "service_name": 26,
+                "severity": 27,
+                "stream": 28,
+                "thread": 44,
+                "thread_name": 29,
+                "timestamp": 1
+              },
+              "orderByMode": "manual",
+              "renameByName": {
+                "Line": "Raw Log",
+                "Time": "Time",
+                "app": "App",
+                "container": "Container",
+                "level": "Log Level",
+                "message": "Message",
+                "message_rx": "",
+                "request_id": "Request ID"
+              }
+            }
+          }
+        ],
+        "type": "table"
+      }
+    ],
+    "preload": false,
+    "refresh": "",
+    "schemaVersion": 42,
+    "tags": [],
+    "templating": {
+      "list": [
+        {
+          "allValue": ".*",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "definition": "label_values(consul_source_service)",
+          "includeAll": true,
+          "name": "source_service",
+          "options": [],
+          "query": {
+            "qryType": 1,
+            "query": "label_values(consul_source_service)",
+            "refId": "PrometheusVariableQueryEditor-VariableQuery"
+          },
+          "refresh": 1,
+          "regex": "",
+          "regexApplyTo": "value",
+          "type": "query"
+        },
+        {
+          "current": {
+            "text": "All",
+            "value": [
+              "$__all"
+            ]
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "definition": "label_values(consul_destination_service)",
+          "includeAll": true,
+          "multi": true,
+          "name": "destination_service",
+          "options": [],
+          "query": {
+            "qryType": 1,
+            "query": "label_values(consul_destination_service)",
+            "refId": "PrometheusVariableQueryEditor-VariableQuery"
+          },
+          "refresh": 1,
+          "regex": "",
+          "regexApplyTo": "value",
+          "type": "query"
+        },
+        {
+          "current": {
+            "text": "default",
+            "value": "default"
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "definition": "label_values(namespace)",
+          "includeAll": false,
+          "name": "namespace",
+          "options": [],
+          "query": {
+            "qryType": 1,
+            "query": "label_values(namespace)",
+            "refId": "PrometheusVariableQueryEditor-VariableQuery"
+          },
+          "refresh": 1,
+          "regex": "",
+          "regexApplyTo": "value",
+          "type": "query"
+        },
+        {
+          "allValue": ".*",
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          },
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "definition": "",
+          "includeAll": true,
+          "name": "request_id",
+          "options": [],
+          "query": {
+            "label": "request_id",
+            "refId": "LokiVariableQueryEditor-VariableQuery",
+            "stream": "",
+            "type": 1
+          },
+          "refresh": 1,
+          "regex": "",
+          "regexApplyTo": "value",
+          "type": "query"
+        },
+        {
+          "current": {
+            "text": "token exchange",
+            "value": "token exchange"
+          },
+          "description": "Filter logs y keyword in message field",
+          "label": "Message contains",
+          "name": "message_search",
+          "options": [
+            {
+              "selected": true,
+              "text": "token exchange",
+              "value": "token exchange"
+            }
+          ],
+          "query": "token exchange",
+          "type": "textbox"
+        }
+      ]
+    },
+    "time": {
+      "from": "now-30m",
+      "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "browser",
+    "title": "Consul Service_To_Service Dashboard",
+    "uid": "qTEWJ0XSkm",
+    "version": 12,
+    "weekStart": ""
+  },
+  "status": {}
+}

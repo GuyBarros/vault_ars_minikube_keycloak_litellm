@@ -1,0 +1,20 @@
+---
+# ServiceIntentions for the opa-gov-api destination.
+#
+# The corresponding intention allowing opa-gov-api to reach opa-service on the
+# mesh is added as a second source on the existing `opa-service` resource in
+# `service-intentions.yaml` — Consul permits only one ServiceIntentions entry
+# per destination, so both sources (ai-agent and opa-gov-api) live together.
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: opa-gov-api
+  namespace: default
+spec:
+  destination:
+    name: opa-gov-api
+    namespace: default
+  sources:
+    - name: ai-agent
+      action: allow
+      namespace: default

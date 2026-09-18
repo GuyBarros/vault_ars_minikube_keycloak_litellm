@@ -1,0 +1,661 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "Agent Runtime Protection — Policy Violations",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Counter increments once per /evaluate call where any of {prompt_safety_risk, jailbreak, harm, hap, unethical_behavior} > 0.5. Click to show matching logs.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "targetBlank": false,
+              "title": "Filter logs — wx-gov violations (any metric > 0.5)",
+              "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22wx-gov-api%22%7D%20%7C%3D%20%22guardrails.metrics.completed%22%20%7C%20json%20%7C%20json%20harm%3D%22response.harm%22%2C%20hap%3D%22response.hap%22%2C%20unethical%3D%22response.unethical_behavior%22%2C%20prompt_safety_risk%3D%22response.prompt_safety_risk%22%2C%20jailbreak%3D%22response.jailbreak%22%20%7C%20harm%20%3E%200.5%20or%20hap%20%3E%200.5%20or%20unethical%20%3E%200.5%20or%20prompt_safety_risk%20%3E%200.5%20or%20jailbreak%20%3E%200.5%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "expr": "sum(wxgov_violations_total)",
+          "instant": true,
+          "legendFormat": "Total",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(wxgov_violations_total[5m]))",
+          "instant": true,
+          "legendFormat": "Rate /s",
+          "refId": "B"
+        }
+      ],
+      "title": "wx-gov • Violations",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "targetBlank": false,
+              "title": "Filter logs — wx-gov PII masking completed",
+              "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22wx-gov-api%22%7D%20%7C%3D%20%22guardrails.masking.completed%22%20%7C%20json%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "expr": "sum(wxgov_pii_masking_successful_total)",
+          "instant": true,
+          "legendFormat": "Total",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(wxgov_pii_masking_successful_total[5m]))",
+          "instant": true,
+          "legendFormat": "Rate /s",
+          "refId": "B"
+        }
+      ],
+      "title": "wx-gov • PII Masked",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Counter increments once per /evaluate call blocked by OPA (is_injection=true and/or is_unsafe=true). Click to show matching logs.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "targetBlank": false,
+              "title": "Filter logs — OPA blocked requests",
+              "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22opa-gov-api%22%7D%20%7C%3D%20%22opa.security.blocked%22%20%7C%20json%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "expr": "sum(opa_violations_total)",
+          "instant": true,
+          "legendFormat": "Total",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(opa_violations_total[5m]))",
+          "instant": true,
+          "legendFormat": "Rate /s",
+          "refId": "B"
+        }
+      ],
+      "title": "OPA • Violations",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "links": [
+            {
+              "targetBlank": false,
+              "title": "Filter logs — OPA pii_changed",
+              "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22opa-gov-api%22%7D%20%7C%3D%20%22pii_changed%22%20%7C%20json%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
+            }
+          ],
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "showPercentChange": false,
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum(opa_pii_masking_successful_total)",
+          "instant": true,
+          "legendFormat": "Total",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(opa_pii_masking_successful_total[5m]))",
+          "instant": true,
+          "legendFormat": "Rate /s",
+          "refId": "B"
+        }
+      ],
+      "title": "OPA • PII Masked",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 101,
+      "panels": [],
+      "title": "Matching Logs — click a stat, then expand a row and click '+' next to request_id to pivot to the full trace below",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "description": "Step 1: click a stat above. Violation/event rows render red via level=error. Step 2: expand a row (click the ⋮ icon), find the request_id label, and click the '+' magnifier icon next to its value. That adds an ad-hoc 'request_id = …' filter that automatically narrows both this panel and the 'Full trace' panel below.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 10,
+      "options": {
+        "dedupStrategy": "none",
+        "enableInfiniteScrolling": false,
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showControls": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "unwrappedColumns": false,
+        "wrapLogMessage": true
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "direction": "backward",
+          "editorMode": "code",
+          "expr": "$loki_expr",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Matching violations — $loki_expr",
+      "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 102,
+      "panels": [],
+      "title": "Full request trace — add an ad-hoc 'request_id = …' filter above to narrow this panel",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "P8E80F9AEF21F6940"
+      },
+      "description": "Expand a violation row in the panel above, find the request_id label, and click the '+' magnifier icon next to it. That adds a 'request_id = …' ad-hoc filter (visible in the Filters bar at the top of the dashboard). This panel then narrows to every log line sharing that request_id — the full chain of actions leading to the violation.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "container"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 171
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "message"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 1037
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 263
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "app"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 143
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "request_id"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 322
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 187
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 24,
+        "x": 0,
+        "y": 19
+      },
+      "id": 11,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Time"
+          }
+        ]
+      },
+      "pluginVersion": "12.4.2",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "P8E80F9AEF21F6940"
+          },
+          "direction": "backward",
+          "editorMode": "code",
+          "expr": "{cluster=\"ai-security-demo\", namespace!~\"consul|kube-system|monitoring|kubequery\", container!~\"vault-agent\", request_id!~\"-|''\"}\n  |= \"request_id\"\n  | json\n  | regexp `(?:\"request_id\":\\s*\"|request_id=)(?P<request_id_rx>[a-f0-9\\-]+)`\n  | regexp `(?:\"message\":\\s*\"|message=\")(?P<message_rx>[^\"]*)\"`                                                                         \n  | label_format request_id=`{{ or .request_id .request_id_rx }}`, message=`{{ or .message .message_rx }}`\n  | keep time, request_id, app, container, message",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Full trace (all logs for wx-gov-api + opa-gov-api — narrow via the Filters bar)",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "delimiter": ",",
+            "format": "json",
+            "keepTime": true,
+            "replace": true,
+            "source": "labels"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "__error__": true,
+              "__error_details__": true,
+              "time": true
+            },
+            "includeByName": {},
+            "indexByName": {
+              "Time": 0,
+              "__error__": 6,
+              "__error_details__": 7,
+              "app": 2,
+              "container": 3,
+              "message": 4,
+              "request_id": 1,
+              "time": 5
+            },
+            "renameByName": {
+              "Time": "time",
+              "app": "app",
+              "container": "container",
+              "message": "message",
+              "request_id": "request_id"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "fields": {},
+            "sort": [
+              {
+                "field": "Time"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "",
+  "schemaVersion": 42,
+  "tags": [
+    "agent-runtime-protection",
+    "opa",
+    "watsonx-governance"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "{service_name=\"opa-gov-api\"} |= \"pii_changed=true\" | json | label_format level=\"error\", detected_level=\"error\" | line_format \"{{.request_id}}  {{.service_name}}  {{.event}}  {{.message}}\"",
+          "value": "{service_name=\"opa-gov-api\"} |= \"pii_changed=true\" | json | label_format level=\"error\", detected_level=\"error\" | line_format \"{{.request_id}}  {{.service_name}}  {{.event}}  {{.message}}\""
+        },
+        "description": "Filter for the 'Matching violations' panel. Stat clicks overwrite this automatically.",
+        "label": "Loki expression",
+        "name": "loki_expr",
+        "options": [
+          {
+            "selected": true,
+            "text": "{service_name=\"opa-gov-api\"} |= \"pii_changed=true\" | json | label_format level=\"error\", detected_level=\"error\" | line_format \"{{.request_id}}  {{.service_name}}  {{.event}}  {{.message}}\"",
+            "value": "{service_name=\"opa-gov-api\"} |= \"pii_changed=true\" | json | label_format level=\"error\", detected_level=\"error\" | line_format \"{{.request_id}}  {{.service_name}}  {{.event}}  {{.message}}\""
+          }
+        ],
+        "query": "{service_name=\"opa-gov-api\"} |= \"pii_changed=true\" | json | label_format level=\"error\", detected_level=\"error\" | line_format \"{{.request_id}}  {{.service_name}}  {{.event}}  {{.message}}\"",
+        "type": "textbox"
+      },
+      {
+        "baseFilters": [],
+        "datasource": {
+          "type": "loki",
+          "uid": "P8E80F9AEF21F6940"
+        },
+        "description": "Click the '+' icon next to any label value (e.g. request_id) in an expanded log row to add it as a filter here. The filter is appended to every Loki query on the dashboard automatically.",
+        "filters": [],
+        "label": "Filters",
+        "name": "Filters",
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Agent Runtime Protection",
+  "uid": "agent-protection-new",
+  "version": 7,
+  "weekStart": ""
+}

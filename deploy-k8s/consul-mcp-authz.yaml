@@ -1,0 +1,132 @@
+---
+# consul-mcp-authz: combined API + UI workload built from the single
+# consul-mcp-authz image. Inside one container, supervisord runs:
+#   - uvicorn  (FastAPI catalog/discovery service)    → :8080
+#   - node     (Next.js operator console)             → :8502
+# The Next server proxies to the API over loopback (127.0.0.1:8080), so
+# no extra mesh hop. The Vault JWT role, Consul ACL policy, Consul
+# ServiceIntentions, and the OPA catalog all reference this name.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: consul-mcp-authz
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consul-mcp-authz
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consul-mcp-authz
+  template:
+    metadata:
+      labels:
+        app: consul-mcp-authz
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: "false"
+        # The Envoy sidecar terminates mesh traffic on 8080 (API); the UI
+        # port 8502 is intentionally NOT in transparent-proxy scope —
+        # operators reach it directly via `kubectl port-forward`.
+        consul.hashicorp.com/transparent-proxy-exclude-inbound-ports: "8502"
+
+        # ---- Vault Agent sidecar: renders the API's Vault token to disk ----
+        # The API reads /vault/secrets/token per request; vault-agent renews
+        # the token transparently.
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/agent-inject-token: "true"
+        vault.hashicorp.com/role: "consul-mcp-authz"
+        vault.hashicorp.com/auth-type: "jwt"
+        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
+        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
+        vault.hashicorp.com/tls-skip-verify: "true"
+
+        # ---- Consul ACL token for discovery (P1.5) ----
+        # Renders a read-only Consul ACL token from a Vault KV path. The
+        # operator seeds this manually once with `vault kv put` (see
+        # README Step 6.1). Discovery endpoints (/v1/agents,
+        # /v1/mcp-servers, /v1/mcp-servers/{ns}/{name}/tools) return 503
+        # if the file is missing or empty, so discovery is opt-in.
+        vault.hashicorp.com/agent-inject-secret-consul-token: "opa-policies/data/consul/mcp-authz-token"
+        vault.hashicorp.com/agent-inject-template-consul-token: |
+          {{- with secret "opa-policies/data/consul/mcp-authz-token" -}}
+          {{ .Data.data.token }}
+          {{- end -}}
+    spec:
+      serviceAccountName: consul-mcp-authz
+      containers:
+        - name: consul-mcp-authz
+          image: panchalravi/consul-mcp-authz:latest
+          ports:
+            - name: api
+              containerPort: 8080
+            - name: ui
+              containerPort: 8502
+          env:
+            - name: MCP_AUTHZ_API_VAULT_ADDR
+              value: "https://rp-bwtq-http-lb-850508231.ap-southeast-1.elb.amazonaws.com:8200"
+            - name: MCP_AUTHZ_API_VAULT_TLS_VERIFY
+              value: "false"
+            - name: MCP_AUTHZ_API_VAULT_TOKEN_PATH
+              value: "/vault/secrets/token"
+            - name: MCP_AUTHZ_API_VAULT_KV_MOUNT
+              value: "opa-policies"
+            - name: MCP_AUTHZ_API_VAULT_KV_PATH
+              value: "mcp-authz/catalog"
+
+            # ---- Discovery (Consul) ----
+            # Override CONSUL_ADDR to the in-cluster Consul HTTP endpoint
+            # for your environment. With Consul Enterprise + auto-encrypt,
+            # this is typically the external server hostname on :8501.
+            - name: MCP_AUTHZ_API_CONSUL_ADDR
+              value: "https://consul.service.consul:8501"
+            - name: MCP_AUTHZ_API_CONSUL_TLS_VERIFY
+              value: "false"
+            - name: MCP_AUTHZ_API_CONSUL_TOKEN_PATH
+              value: "/vault/secrets/consul-token"
+
+            - name: MCP_AUTHZ_API_LOG_LEVEL
+              value: "INFO"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 200Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: consul-mcp-authz
+  namespace: default
+  labels:
+    app: consul-mcp-authz
+spec:
+  selector:
+    app: consul-mcp-authz
+  ports:
+    - name: api
+      port: 8080
+      targetPort: 8080
+    - name: ui
+      port: 8502
+      targetPort: 8502

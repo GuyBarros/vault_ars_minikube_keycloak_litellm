@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-content-subtle text-content-ink font-sans antialiased;
+    font-feature-settings:
+      'cv02' 1,
+      'cv03' 1,
+      'cv04' 1,
+      'cv11' 1;
+  }
+
+  /* Consul-style focus ring (blue) for keyboard navigation. */
+  :focus-visible {
+    outline: 2px solid theme('colors.brand.DEFAULT');
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Allow pill — green arrow + label, exactly like Consul's Intention Type column. */
+  .pill-allow {
+    @apply inline-flex items-center gap-1.5 rounded-chip border border-allow-border
+      bg-allow-bg px-2 py-0.5 text-xs font-medium text-allow-ink;
+  }
+
+  /* Subtle status badge — used for "Managed by CRD" style labels. */
+  .pill-status {
+    @apply inline-flex items-center gap-1.5 rounded-chip border border-status-ring
+      bg-status-bg px-2 py-0.5 text-xs font-medium text-status-ink;
+  }
+
+  /* Primary blue button — Consul "Create" CTA. */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-md bg-brand px-3.5 py-1.5
+      text-sm font-semibold text-white shadow-sm transition-colors
+      hover:bg-brand-hover focus-visible:outline-none focus-visible:ring-2
+      focus-visible:ring-brand-ring;
+  }
+
+  /* Outlined secondary button. */
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-md border border-content-border
+      bg-white px-3.5 py-1.5 text-sm font-medium text-content-ink transition-colors
+      hover:bg-content-subtle focus-visible:outline-none focus-visible:ring-2
+      focus-visible:ring-brand-ring;
+  }
+}

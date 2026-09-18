@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ciba-channel
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ciba-channel
+  template:
+    metadata:
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: 'false'
+      labels:
+        app: ciba-channel
+    spec:
+      serviceAccountName: ciba-channel
+      enableServiceLinks: false
+      containers:
+        - name: ciba-channel
+          image: ciba-channel:local
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 8093
+          env:
+            - name: CIBA_CALLBACK_URL
+              value: "http://keycloak.virtual.consul/realms/demo/protocol/openid-connect/ext/ciba/auth/callback"
+          resources:
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ciba-channel
+spec:
+  selector:
+    app: ciba-channel
+  ports:
+    - port: 8093
+      targetPort: 8093
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ciba-channel

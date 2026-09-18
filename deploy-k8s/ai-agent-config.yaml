@@ -1,0 +1,17 @@
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: ai-agent
+spec:
+  # Setting to 30s to accommodate the 20s processing time
+  requestTimeout: 30s
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: ai-agent
+spec:
+  protocol: http
+  # Value is in milliseconds (30000ms = 30s)
+  localRequestTimeoutMs: 30000
