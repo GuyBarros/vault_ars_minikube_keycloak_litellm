@@ -69,6 +69,14 @@ for i in $(seq 1 30); do curl -sk "$CONSUL_HTTP_ADDR/v1/status/leader" >/dev/nul
 echo "=== 1. minikube SA signing key (validates in-cluster workload JWTs) ==="
 minikube -p "$PROFILE" ssh -- sudo cat /var/lib/minikube/certs/sa.pub > "$GEN_DIR/minikube_sa_pub.pem"
 
+echo "=== 1b. Consul mesh config for Vault + Postgres ==="
+# Must precede Postgres and step 5: Vault's DB secrets engine connects to
+# Postgres through the mesh, so the intentions have to exist first.
+KC apply -f "$(dirname "$INFRA_DIR")/deploy-k8s/mesh.yaml"
+KC apply -f "$SCRIPT_DIR/mesh-vault-postgres.yaml"
+KC -n default wait --for=condition=Synced servicedefaults.consul.hashicorp.com/postgres --timeout=60s
+KC -n vault wait --for=condition=Synced servicedefaults.consul.hashicorp.com/vault --timeout=60s
+
 echo "=== 2. Postgres (StatefulSet + users table, seeded) ==="
 namespace="$POSTGRES_NAMESPACE" app_label="$POSTGRES_APP_LABEL" service_name="$POSTGRES_SERVICE_NAME" \
   statefulset_name="$POSTGRES_STATEFULSET_NAME" secret_name="$POSTGRES_SECRET_NAME" \
@@ -81,14 +89,14 @@ KC -n "$POSTGRES_NAMESPACE" rollout status statefulset/"$POSTGRES_STATEFULSET_NA
 KC -n "$POSTGRES_NAMESPACE" wait --for=condition=Ready pod/"${POSTGRES_STATEFULSET_NAME}-0" --timeout=300s
 
 for i in $(seq 1 60); do
-  KC -n "$POSTGRES_NAMESPACE" exec -i "${POSTGRES_STATEFULSET_NAME}-0" -- pg_isready -h 127.0.0.1 -p 5432 -q && break
+  KC -n "$POSTGRES_NAMESPACE" exec -i -c postgres "${POSTGRES_STATEFULSET_NAME}-0" -- pg_isready -h 127.0.0.1 -p 5432 -q && break
   echo "waiting for postgres to accept TCP connections..."
   sleep 3
 done
 
-KC -n "$POSTGRES_NAMESPACE" exec -i "${POSTGRES_STATEFULSET_NAME}-0" -- \
+KC -n "$POSTGRES_NAMESPACE" exec -i -c postgres "${POSTGRES_STATEFULSET_NAME}-0" -- \
   psql -U "$POSTGRES_ADMIN_USER" -d "$POSTGRES_ADMIN_DB" -tAc "SELECT 1 FROM pg_database WHERE datname='${USERS_DB_NAME}'" \
-  | grep -q 1 || KC -n "$POSTGRES_NAMESPACE" exec -i "${POSTGRES_STATEFULSET_NAME}-0" -- \
+  | grep -q 1 || KC -n "$POSTGRES_NAMESPACE" exec -i -c postgres "${POSTGRES_STATEFULSET_NAME}-0" -- \
   psql -U "$POSTGRES_ADMIN_USER" -d "$POSTGRES_ADMIN_DB" -c "CREATE DATABASE ${USERS_DB_NAME}"
 
 {
@@ -107,7 +115,7 @@ KC -n "$POSTGRES_NAMESPACE" exec -i "${POSTGRES_STATEFULSET_NAME}-0" -- \
   jq -r -f "$SCRIPT_DIR/seed-users.jq" "$RESOURCES_DIR/users_seed.json"
 } > "$GEN_DIR/users-init.sql"
 
-KC -n "$POSTGRES_NAMESPACE" exec -i "${POSTGRES_STATEFULSET_NAME}-0" -- \
+KC -n "$POSTGRES_NAMESPACE" exec -i -c postgres "${POSTGRES_STATEFULSET_NAME}-0" -- \
   psql -U "$POSTGRES_ADMIN_USER" -d "$USERS_DB_NAME" -v ON_ERROR_STOP=1 < "$GEN_DIR/users-init.sql"
 
 echo "=== 3. Vault: k8s JWT auth backend + OPA policy bundle ==="
@@ -262,6 +270,50 @@ echo "=== 7. Vault: seed initial OPA MCP authz catalog ==="
 vault kv put opa-policies/mcp-authz/catalog - <<-EOT
 	{"rules": {"default/litellm-gateway": {"default/user-mcp": {"allow": ["list_all_users", "search_users_by_first_name", "update_user_by_email", "create_user", "delete_user_by_email"]}}}}
 	EOT
+
+echo "=== 8. Vault as the Consul service mesh (Connect) CA ==="
+# Consul installs before Vault exists (bootstrap.sh), so it starts on its
+# built-in CA; this switches it to Vault once Vault is unsealed. Consul mounts
+# and populates the connect_root / connect_inter PKI engines itself, then
+# cross-signs the new root so already-running proxies keep working. Runs before
+# any workload is deployed, so sidecars are issued Vault leaf certs from the start.
+# (Consul's own server-RPC TLS CA is separate and untouched.)
+vault policy write consul-connect-ca - <<-EOT
+	path "sys/mounts" {
+	  capabilities = ["read"]
+	}
+	path "sys/mounts/connect_root" {
+	  capabilities = ["create", "read", "update", "delete", "list"]
+	}
+	path "sys/mounts/connect_inter" {
+	  capabilities = ["create", "read", "update", "delete", "list"]
+	}
+	path "sys/mounts/connect_inter/tune" {
+	  capabilities = ["update"]
+	}
+	path "connect_root/*" {
+	  capabilities = ["create", "read", "update", "delete", "list"]
+	}
+	path "connect_inter/*" {
+	  capabilities = ["create", "read", "update", "delete", "list"]
+	}
+	path "auth/token/renew-self" {
+	  capabilities = ["update"]
+	}
+	path "auth/token/lookup-self" {
+	  capabilities = ["read"]
+	}
+	EOT
+
+# Periodic token: Consul renews it for as long as it runs.
+consul_ca_vault_token=$(vault token create -policy=consul-connect-ca -orphan -period=72h \
+  -display-name=consul-connect-ca -format=json | jq -r '.auth.client_token')
+
+consul connect ca set-config -config-file=<(jq -n \
+  --arg addr "https://vault.vault.svc.cluster.local:8200" --arg token "$consul_ca_vault_token" \
+  '{Provider: "vault", Config: {Address: $addr, Token: $token, RootPKIPath: "connect_root", IntermediatePKIPath: "connect_inter", CAFile: "/consul/userconfig/vault-ca/ca.crt"}}')
+
+consul connect ca get-config | jq -e '.Provider == "vault"' >/dev/null
 
 echo
 echo "=== done ==="

@@ -3,5 +3,8 @@ kind: Mesh
 metadata:
   name: mesh
 spec:
+  # Lets a service opt in to MutualTLSMode: permissive (Vault, see
+  # infra/local-minikube/mesh-vault-postgres.yaml). Doesn't enable it anywhere.
+  allowEnablingPermissiveMutualTLS: true
   transparentProxy:
     meshDestinationsOnly: false

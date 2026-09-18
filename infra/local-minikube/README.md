@@ -68,7 +68,13 @@ re-run `bootstrap.sh` (you'll need to redo `configure.sh` and the app deploy bel
 (seeded `users` table), the `k8s_jwt` Vault auth backend (validated against minikube's
 own SA signing key instead of an EKS OIDC endpoint), the OPA policy bundle, Vault's
 identity OIDC issuer/role, the `database` secrets engine (dynamic Postgres creds), and
-the Consul ACL token for consul-mcp-authz. The Keycloak-facing Vault config (jwt-keycloak,
+the Consul ACL token for consul-mcp-authz, and switching Consul's service mesh (Connect) CA
+from the built-in provider to Vault (`connect_root` / `connect_inter` PKI engines, which
+Consul creates itself; check with `consul connect ca get-config`). Vault and Postgres are
+both in the mesh (sidecars, `tcp` protocol, intentions in `mesh-vault-postgres.yaml`).
+Postgres is strict mTLS; Vault is `permissive` because the Consul servers, host NodePort
+and kubelet probes reach it from outside the mesh. Since Vault is also the mesh CA, a
+restarted (sealed) Vault can't get new leaf certs issued until it's unsealed by hand. The Keycloak-facing Vault config (jwt-keycloak,
 OAuth Resource Server, Agent Registry) is a separate stage — see `keycloak.sh` above.
 Run `configure.sh` after `bootstrap.sh`:
 

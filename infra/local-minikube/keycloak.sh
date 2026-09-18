@@ -75,26 +75,26 @@ docker build --load -t keycloak-vault-rar:local "$REPO_ROOT/keycloak-providers"
 minikube -p "$PROFILE" image load keycloak-vault-rar:local
 
 # ---- 3. Postgres: dedicated role + database for Keycloak ----
-KC -n default exec -i postgres-0 -- \
+KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='keycloak_user'" \
-  | grep -q 1 || KC -n default exec -i postgres-0 -- \
+  | grep -q 1 || KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -c "CREATE ROLE keycloak_user WITH LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD}'"
 
-KC -n default exec -i postgres-0 -- \
+KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='keycloak'" \
-  | grep -q 1 || KC -n default exec -i postgres-0 -- \
+  | grep -q 1 || KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -c "CREATE DATABASE keycloak OWNER keycloak_user"
 
 # LiteLLM SSO/virtual keys need their own Postgres (Prisma). Same instance
 # as Keycloak; Keycloak already reaches it from a Connect-injected pod.
-KC -n default exec -i postgres-0 -- \
+KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='litellm_user'" \
-  | grep -q 1 || KC -n default exec -i postgres-0 -- \
+  | grep -q 1 || KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -c "CREATE ROLE litellm_user WITH LOGIN PASSWORD '${LITELLM_DB_PASSWORD}'"
 
-KC -n default exec -i postgres-0 -- \
+KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='litellm'" \
-  | grep -q 1 || KC -n default exec -i postgres-0 -- \
+  | grep -q 1 || KC -n default exec -i -c postgres postgres-0 -- \
   psql -U vault_user -d postgres -c "CREATE DATABASE litellm OWNER litellm_user"
 
 KC create secret generic keycloak-db-credentials \
