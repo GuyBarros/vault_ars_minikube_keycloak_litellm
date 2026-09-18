@@ -1,9 +1,15 @@
 """LiteLLM custom_auth: the gateway's PDP admission check.
 
-Public health/UI/SSO routes are admitted without a key. Service callers
-must present the master key as x-litellm-api-key (so Authorization can
-stay the upstream JWT). Everything else — admin-UI SSO JWTs, virtual
-keys — falls through to LiteLLM's default auth.
+Public health/UI/SSO routes are admitted without credentials. Service
+callers are identified by the mesh, not a shared secret: the inbound Envoy
+(builtin/lua extension on litellm-gateway's ServiceDefaults, see
+infra/local-minikube/mesh-timeouts.yaml) copies the verified mTLS peer's
+SPIFFE ID into x-mesh-caller-spiffe, and only ADMITTED_SERVICES are admitted.
+Everything else — admin-UI SSO JWTs, virtual keys, anything arriving through
+litellm-api-gateway — falls through to LiteLLM's default auth.
+
+The header is only trustworthy while that extension is applied: it is what
+strips any client-supplied copy and sets the real one.
 
 Structured PDP_Decision logs use the Telefonica catalog field names.
 """
@@ -11,7 +17,7 @@ Structured PDP_Decision logs use the Telefonica catalog field names.
 from __future__ import annotations
 
 import logging
-import os
+import re
 from typing import Any
 
 LOGGER = logging.getLogger("litellm-gateway.pdp")
@@ -29,44 +35,30 @@ PUBLIC_PATH_PREFIXES = (
     "/litellm-asset-prefix",
 )
 
-LITELLM_API_KEY_HEADER = "x-litellm-api-key"
+CALLER_HEADER = "x-mesh-caller-spiffe"
+
+# "<consul namespace>/<service>" of the workloads allowed to call as the gateway.
+ADMITTED_SERVICES = frozenset({"default/ai-agent", "default/web"})
+
+# Consul SPIFFE IDs end .../ns/<namespace>/dc/<datacenter>/svc/<service>
+# (Enterprise adds a leading /ap/<partition>).
+_SPIFFE_SERVICE = re.compile(r"/ns/(?P<ns>[^/]+)/dc/[^/]+/svc/(?P<svc>[^/]+)$")
 
 
-def strip_bearer(value: str | None) -> str | None:
-    if value is None:
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    prefix = "bearer "
-    if stripped.lower().startswith(prefix):
-        stripped = stripped[len(prefix) :].strip()
-    return stripped or None
-
-
-def presented_master_key(
-    api_key: str | None,
-    litellm_api_key_header: str | None,
-) -> str | None:
-    """Prefer x-litellm-api-key so Authorization can stay the upstream JWT."""
-    return strip_bearer(litellm_api_key_header) or strip_bearer(api_key)
+def mesh_caller(spiffe_id: str | None) -> str | None:
+    """Return "<namespace>/<service>" for a Consul SPIFFE ID, or None if malformed."""
+    match = _SPIFFE_SERVICE.search((spiffe_id or "").strip())
+    return f"{match['ns']}/{match['svc']}" if match else None
 
 
 def is_public_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PATH_PREFIXES)
 
 
-def decide(
-    *,
-    path: str,
-    presented: str | None,
-    master_key: str | None,
-) -> str:
+def decide(*, path: str, caller: str | None) -> str:
     if is_public_path(path):
         return "ALLOW"
-    if not master_key:
-        return "DENY"
-    if presented and presented == master_key:
+    if caller in ADMITTED_SERVICES:
         return "ALLOW"
     return "DENY"
 
@@ -109,14 +101,13 @@ async def _default_user_api_key_auth(request: Any, api_key: str) -> Any:
         proxy_server.user_custom_auth = saved
 
 
-def _allowed_auth(presented: str | None, master_key: str | None, *, public: bool) -> Any:
+def _allowed_auth(caller: str | None, *, public: bool) -> Any:
     from litellm.proxy._types import LitellmUserRoles, UserAPIKeyAuth
 
-    token = presented or master_key or "health"
     if public:
-        return UserAPIKeyAuth(api_key=token)
+        return UserAPIKeyAuth(api_key="health")
     return UserAPIKeyAuth(
-        api_key=token,
+        api_key=f"mesh:{caller}",
         user_id="litellm-gateway",
         user_role=LitellmUserRoles.PROXY_ADMIN,
     )
@@ -124,17 +115,15 @@ def _allowed_auth(presented: str | None, master_key: str | None, *, public: bool
 
 async def user_api_key_auth(request: Any, api_key: str) -> Any:
     path = request.url.path
-    master_key = os.environ.get("LITELLM_MASTER_KEY")
-    presented = presented_master_key(
-        api_key, header_value(request.headers, LITELLM_API_KEY_HEADER)
-    )
-    decision = decide(path=path, presented=presented, master_key=master_key)
+    caller = mesh_caller(header_value(request.headers, CALLER_HEADER))
+    decision = decide(path=path, caller=caller)
     LOGGER.info(
-        "event=pdp_decision PDP_Decision=%s path=%s",
+        "event=pdp_decision PDP_Decision=%s path=%s caller=%s",
         decision,
         path,
+        caller,
     )
     if decision == "ALLOW":
-        return _allowed_auth(presented, master_key, public=is_public_path(path))
-    # SSO JWTs and virtual keys are LiteLLM's own auth, not the master key.
+        return _allowed_auth(caller, public=is_public_path(path))
+    # SSO JWTs, virtual keys and the master key are LiteLLM's own auth.
     return await _default_user_api_key_auth(request, api_key)

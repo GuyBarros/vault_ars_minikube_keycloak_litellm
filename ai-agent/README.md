@@ -60,6 +60,8 @@ The application has two public endpoints:
 - `POST /v1/agent/query`
 - `GET /v1/agent/tokens`
 
+It also serves an unauthenticated A2A agent card at `GET /.well-known/agent-card.json` (also at `/.well-known/agent.json` and `/agent.json`, since A2A clients look in different places by spec version). It carries public metadata only and exists for LiteLLM's Agents > Discovery; its `url` is derived from the request's host.
+
 High-level request flow:
 
 1. FastAPI receives the request and assigns a request ID.
@@ -133,6 +135,7 @@ The service reads environment variables from the process environment and also lo
 | --- | --- | --- |
 | `LANGCHAIN_MODEL` | `openai:gpt-5-mini` | Provider-qualified chat model string passed to LangChain, for example `openai:gpt-5-mini` |
 | `OPENAI_API_KEY` | none | OpenAI API key when using an OpenAI-backed `LANGCHAIN_MODEL` |
+| `LITELLM_BASE_URL` | none | When set, LLM calls go through LiteLLM's OpenAI-compatible `/v1` instead of directly to a provider. LiteLLM admits the agent by its mesh (SPIFFE) identity, so no LiteLLM API key is configured or sent; the OpenAI client is given a placeholder key only because the SDK requires one. |
 | `ACTOR_TOKEN_PATH` | `/vault/secrets/actor-token` | Filesystem path to the actor token |
 | `TOKEN_EXCHANGE_URL` | `http://localhost:8080/v1/identity/obo-token` | OBO token exchange endpoint |
 | `TOKEN_EXCHANGE_TIMEOUT_SECONDS` | `10` | Token exchange timeout |

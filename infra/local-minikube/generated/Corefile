@@ -26,5 +26,5 @@
 consul:53 {
     errors
     cache 30
-    forward . 10.97.126.158
+    forward . 10.108.245.52
 }

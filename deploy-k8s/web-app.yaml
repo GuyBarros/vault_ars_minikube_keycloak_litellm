@@ -30,11 +30,6 @@ spec:
           env:
             - name: AI_AGENT_API_URL
               value: "http://litellm-gateway.virtual.consul:4000"
-            - name: LITELLM_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: litellm-gateway-env
-                  key: LITELLM_MASTER_KEY
           resources:
             limits:
               memory: "200Mi"

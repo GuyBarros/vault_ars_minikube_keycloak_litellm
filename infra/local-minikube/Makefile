@@ -58,13 +58,18 @@ images:
 	docker build --load -t agentguard-web-app:local $(REPO_ROOT)/web-app
 	docker build --load -t agentguard-token-exchange:local $(REPO_ROOT)/token-exchange
 	docker build --load -t ciba-channel:local $(REPO_ROOT)/ciba-channel
+	docker build --load -t agentguard-opa-gov-api:local $(REPO_ROOT)/opa-gov-api
 	minikube -p $(PROFILE) image load agentguard-user-mcp:local
 	minikube -p $(PROFILE) image load agentguard-ai-agent:local
 	minikube -p $(PROFILE) image load agentguard-web-app:local
 	minikube -p $(PROFILE) image load agentguard-token-exchange:local
 	minikube -p $(PROFILE) image load ciba-channel:local
+	minikube -p $(PROFILE) image load agentguard-opa-gov-api:local
 
 deploy:
+	# service-intentions.yaml carries opa-service's intention in the `opa` namespace;
+	# without the namespace that one CR fails (masked by the `|| true` below).
+	$(KC) create namespace opa --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/proxy-defaults.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/mesh.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/service-intentions.yaml || true
@@ -90,6 +95,13 @@ deploy:
 	  --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/litellm-gateway.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/litellm-gateway-gateway.yaml
+	# OPA content PDP: LiteLLM guardrail -> opa-gov-api -> opa-service (policies from
+	# Vault KV opa-policies/bundle). Set here, not in litellm-gateway.yaml: that manifest
+	# is shared, and the guardrail denies every prompt when its OPA is unreachable.
+	$(KC) apply -n opa -f $(DEPLOY_DIR)/opa-server.yaml
+	$(KC) apply -f $(DEPLOY_DIR)/opa-gov-api.yaml
+	# Consul virtual address of opa-gov-api; the port is its Service port.
+	$(KC) set env deployment/litellm-gateway OPA_GOV_API_URL=http://opa-gov-api.virtual.consul:8000
 	$(KC) create secret generic ai-agent-env --from-file=.env=$(DEPLOY_DIR)/ai-agent.env --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/ai-agent.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/ai-agent-config.yaml
@@ -117,18 +129,22 @@ deploy:
 	$(KC) set image deployment/ai-agent ai-agent=agentguard-ai-agent:local
 	$(KC) set image deployment/web web=agentguard-web-app:local
 	$(KC) set image deployment/token-exchange token-exchange=agentguard-token-exchange:local
+	$(KC) set image deployment/opa-gov-api api=agentguard-opa-gov-api:local
 	$(KC) patch deployment user-mcp -n default --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
 	$(KC) patch deployment ai-agent -n default --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
 	$(KC) patch deployment web -n default --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
 	$(KC) patch deployment token-exchange -n default --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
+	$(KC) patch deployment opa-gov-api -n default --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
+	# Consul creates each *-api-gateway Service asynchronously; patching NodePort
+	# before it exists would create a ClusterIP Service that rejects nodePort.
+	@for svc in web-api-gateway ciba-channel-gateway litellm-api-gateway; do \
+	  for i in $$(seq 1 60); do \
+	    $(KC) get svc $$svc >/dev/null 2>&1 && break; \
+	    sleep 2; \
+	  done; \
+	done
 	$(KC) apply -f web-nodeport.yaml
 	$(KC) apply -f ciba-channel-nodeport.yaml
-	# Consul creates litellm-api-gateway asynchronously; patching NodePort
-	# before it exists would create a ClusterIP Service that rejects nodePort.
-	@for i in $$(seq 1 60); do \
-	  $(KC) get svc litellm-api-gateway >/dev/null 2>&1 && break; \
-	  sleep 2; \
-	done
 	$(KC) apply -f litellm-gateway-nodeport.yaml
 	# Host :4000 is published at minikube create (--ports 4000:30083). Probe
 	# TCP listen, not /health: LiteLLM is often still starting here, and a

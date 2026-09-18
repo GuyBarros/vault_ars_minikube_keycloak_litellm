@@ -126,25 +126,12 @@ async function fetchWithRetry(
   throw new Error(`Agent fetch exhausted retries for ${operation} at ${url}`);
 }
 
-export function withLiteLLMAdmission(
-  headers: Record<string, string>,
-  apiKey: string | undefined,
-): Record<string, string> {
-  if (!apiKey) return headers;
-  return { ...headers, 'x-litellm-api-key': `Bearer ${apiKey}` };
-}
-
 function buildHeaders(accessToken: string): Record<string, string> {
-  return buildOutboundHeaders(
-    withLiteLLMAdmission(
-      {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        Accept: 'text/plain, application/json;q=0.9',
-      },
-      agent.litellmApiKey,
-    ),
-  );
+  return buildOutboundHeaders({
+    Authorization: `Bearer ${accessToken}`,
+    'Content-Type': 'application/json',
+    Accept: 'text/plain, application/json;q=0.9',
+  });
 }
 
 function buildPayload(message: string, history: ChatMessage[], stream: boolean) {

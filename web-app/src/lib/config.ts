@@ -25,7 +25,6 @@ const schema = z.object({
     .string()
     .default('')
     .transform((s) => s.replace(/\/$/, '')),
-  LITELLM_API_KEY: z.string().optional().default(''),
   AI_AGENT_DNS_RETRY_ATTEMPTS: z.coerce.number().int().min(1).max(6).default(3),
   AI_AGENT_DNS_RETRY_BASE_DELAY_MS: z.coerce.number().int().min(10).max(5_000).default(150),
   AI_AGENT_DNS_RETRY_MAX_DELAY_MS: z.coerce.number().int().min(10).max(30_000).default(1_000),
@@ -85,7 +84,6 @@ export const agent = {
   queryUrl: config.AI_AGENT_API_URL ? `${config.AI_AGENT_API_URL}/v1/agent/query` : '',
   tokensUrl: config.AI_AGENT_API_URL ? `${config.AI_AGENT_API_URL}/v1/agent/tokens` : '',
   assuranceUrl: config.AI_AGENT_API_URL ? `${config.AI_AGENT_API_URL}/v1/agent/assurance` : '',
-  litellmApiKey: config.LITELLM_API_KEY,
   retry: {
     maxAttempts: config.AI_AGENT_DNS_RETRY_ATTEMPTS,
     baseDelayMs: config.AI_AGENT_DNS_RETRY_BASE_DELAY_MS,

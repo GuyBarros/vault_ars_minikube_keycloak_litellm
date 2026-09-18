@@ -411,25 +411,11 @@ def test_extract_required_scopes_falls_back_for_litellm_prefixed_names():
     assert extract_required_scopes(Unprefixed()) == ["users.read"]
 
 
-def test_mcp_request_headers_keep_obo_and_add_litellm_admission():
-    from mcp_client import LITELLM_API_KEY_HEADER, mcp_request_headers
-
-    discovery = mcp_request_headers("req-1", litellm_api_key="sk-master")
-    assert discovery == {
-        "X-Request-ID": "req-1",
-        LITELLM_API_KEY_HEADER: "Bearer sk-master",
-    }
-    assert "Authorization" not in discovery
-
-    call = mcp_request_headers(
-        "req-2", obo_token="obo-jwt", litellm_api_key="sk-master"
-    )
-    assert call["Authorization"] == "Bearer obo-jwt"
-    assert call[LITELLM_API_KEY_HEADER] == "Bearer sk-master"
-
-
-def test_mcp_request_headers_omit_litellm_when_unset():
+def test_mcp_request_headers_carry_no_litellm_credential():
     from mcp_client import mcp_request_headers
+
+    discovery = mcp_request_headers("req-1")
+    assert discovery == {"X-Request-ID": "req-1"}
 
     headers = mcp_request_headers("req-3", obo_token="obo-jwt")
     assert headers == {
@@ -445,7 +431,6 @@ def _build_settings(tmp_path):
         model="x",
         ollama_base_url=None,
         litellm_base_url=None,
-        litellm_api_key=None,
         actor_token_path=actor_token_path,
         token_exchange_url="http://t.local/obo",
         token_exchange_timeout_seconds=1.0,

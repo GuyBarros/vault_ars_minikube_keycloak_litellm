@@ -363,12 +363,6 @@ upsert_env_var "$DEPLOY_DIR/token-exchange.env" "IDENTITY_BROKER_OBO_CLIENT_SECR
 upsert_env_var "$DEPLOY_DIR/user-mcp.env" "USER_MCP_CIBA_CLIENT_SECRET" "$CIBA_CLIENT_SECRET"
 upsert_env_var "$DEPLOY_DIR/web-app.env" "KEYCLOAK_CLIENT_SECRET" "$WEB_CLIENT_SECRET"
 
-# ---- 8. LiteLLM gateway master key + SSO client secret. The k8s Secret
-#         litellm-gateway-env is built by `make deploy` from generated/. ----
-LITELLM_MASTER_KEY=$(gen_secret "$GEN_DIR/litellm_master_key")
-upsert_env_var "$DEPLOY_DIR/ai-agent.env" "LITELLM_API_KEY" "$LITELLM_MASTER_KEY"
-upsert_env_var "$DEPLOY_DIR/web-app.env" "LITELLM_API_KEY" "$LITELLM_MASTER_KEY"
-
 echo
 echo "=== done ==="
 echo "keycloak realm:        demo (http://localhost:8081/realms/demo)"

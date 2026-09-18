@@ -34,7 +34,6 @@ def get_last_tool_meta() -> dict[str, Any] | None:
 # Header set by the OPA/Envoy ext_authz sidecar in front of user-mcp when a
 # request is denied — see deploy-k8s/agent-mcp-authz/policy/mcp/authz/mcp_authz.rego.
 AUTHZ_REASON_HEADER = "x-authz-reason"
-LITELLM_API_KEY_HEADER = "x-litellm-api-key"
 # LiteLLM's MCP gateway prefixes every tools/list name with `{server}-`.
 # The agent, SYSTEM_PROMPT, OBO scopes, and user-mcp all use the upstream
 # names (list_all_users, …). Strip on discovery; /user_mcp/mcp still
@@ -55,20 +54,17 @@ KNOWN_TOOL_SCOPES: dict[str, list[str]] = {
 def mcp_request_headers(
     request_id: str,
     obo_token: str | None = None,
-    litellm_api_key: str | None = None,
 ) -> dict[str, str]:
     """Headers for the streamable-HTTP MCP hop.
 
-    When USER_MCP_URL points at LiteLLM's MCP gateway, the PEP needs
-    `x-litellm-api-key`. Authorization stays the OBO so true_passthrough
-    can forward it to user-mcp for JWT / CIBA. Discovery sends no
-    Authorization.
+    When USER_MCP_URL points at LiteLLM's MCP gateway, LiteLLM identifies
+    this caller by its mesh identity, so no credential is added for it.
+    Authorization stays the OBO so LiteLLM's extra_headers can forward it to
+    user-mcp for JWT / CIBA. Discovery sends no Authorization.
     """
     headers: dict[str, str] = {"X-Request-ID": request_id}
     if obo_token:
         headers["Authorization"] = f"Bearer {obo_token}"
-    if litellm_api_key:
-        headers[LITELLM_API_KEY_HEADER] = f"Bearer {litellm_api_key}"
     return headers
 
 
@@ -143,7 +139,6 @@ async def fetch_mcp_tools(
     obo_token: str | None,
     request_id: str,
     timeout_seconds: float = 30.0,
-    litellm_api_key: str | None = None,
 ) -> list[Any]:
     """Build a fresh MCP client whose streamable-HTTP requests carry the
     given OBO bearer (if any) and the caller's X-Request-ID, then return
@@ -155,9 +150,7 @@ async def fetch_mcp_tools(
     """
     MultiServerMCPClient = _import_multi_server_client()
 
-    headers = mcp_request_headers(
-        request_id, obo_token=obo_token, litellm_api_key=litellm_api_key
-    )
+    headers = mcp_request_headers(request_id, obo_token=obo_token)
 
     client = MultiServerMCPClient(
         {
@@ -233,7 +226,6 @@ async def invoke_mcp_tool(
     obo_token: str,
     request_id: str,
     timeout_seconds: float = 30.0,
-    litellm_api_key: str | None = None,
 ) -> Any:
     """Build a transient MCP client carrying *obo_token* and call a single
     tool by name. Used by the per-call scope wrapper so each MCP tools/call
@@ -255,9 +247,7 @@ async def invoke_mcp_tool(
     MultiServerMCPClient = _import_multi_server_client()
     convert_call_tool_result = _import_convert_call_tool_result()
 
-    headers = mcp_request_headers(
-        request_id, obo_token=obo_token, litellm_api_key=litellm_api_key
-    )
+    headers = mcp_request_headers(request_id, obo_token=obo_token)
     client = MultiServerMCPClient(
         {
             "user-mcp": {

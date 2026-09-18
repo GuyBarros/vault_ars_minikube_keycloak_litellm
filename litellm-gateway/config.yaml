@@ -1,11 +1,12 @@
 # LiteLLM is the AI Gateway: PEP (every web / agent / MCP hop lands here)
-# and PDP (custom_auth admits the master key; SSO JWTs fall through to
-# LiteLLM; the optional OPA guardrail decides on prompt content).
+# and PDP (custom_auth admits ai-agent and web by their mesh identity; SSO JWTs
+# fall through to LiteLLM; the optional OPA guardrail decides on prompt content).
 # ai-agent never talks to Ollama/OpenAI or user-mcp directly; the web BFF
 # never talks to ai-agent directly.
 #
-# Admission key: x-litellm-api-key (Authorization stays the upstream JWT —
-# Keycloak access token toward ai-agent, OBO toward user-mcp).
+# Service callers carry no LiteLLM credential: Authorization stays the upstream
+# JWT (Keycloak access token toward ai-agent, OBO toward user-mcp) and the
+# caller is identified by its SPIFFE ID (see pdp_auth.py).
 model_list:
   - model_name: qwen-local
     litellm_params:
@@ -43,7 +44,11 @@ mcp_servers:
   user_mcp:
     url: "http://user-mcp.virtual.consul/mcp"
     transport: "http"
-    auth_type: "true_passthrough"
+    # Not "true_passthrough": the Admin UI treats that as client-forwarded auth
+    # and refuses to list tools ("Authentication required") until the viewer
+    # supplies a token. extra_headers alone still forwards the OBO Authorization
+    # on tool calls (checked: user-mcp receives it under auth_type none).
+    auth_type: "none"
     extra_headers: ["Authorization", "X-Request-ID"]
     allow_all_keys: true
     description: "user-mcp (OBO JWT in Authorization)"
@@ -84,6 +89,11 @@ general_settings:
   # Restricted (LiteLLM default) hides config MCP servers from dashboard
   # users whose key/team has no explicit mcp_servers grant.
   user_mcp_management_mode: view_all
+  # Agents > Discovery fetches the agent card from a user-supplied URL, and
+  # LiteLLM's SSRF guard blocks Consul virtual IPs (240.0.0.0/4). Allow only
+  # the one internal host that serves a card.
+  user_url_allowed_hosts:
+    - ai-agent.virtual.consul
   pass_through_request_timeout: 280
   pass_through_endpoints:
     # web-app -> LiteLLM -> ai-agent (chat, tokens, assurance)
