@@ -1,0 +1,154 @@
+# Local-only Consul mesh timeout overrides. The AWS flow's hosted model is
+# fast enough that Envoy's defaults are never an issue there - a local
+# Ollama/Qwen model on this machine is measurably slower (observed up to
+# ~127s for "list all users"), so every hop on the request's path back to
+# the browser needs raising:
+#
+#   browser -> web-api-gateway -> web (Next.js, streams the response through)
+#                                -> ai-agent -> ... -> Qwen
+#
+# Two DIFFERENT mechanisms are involved, confirmed by reading each hop's
+# live Envoy config (GET /config_dump on each pod's :19000 admin API):
+#
+# 1. Mesh-to-mesh calls (web's own sidecar calling ai-agent) are governed by
+#    the destination's ServiceResolver.requestTimeout /
+#    ServiceDefaults.localRequestTimeoutMs, and Consul distributes that to
+#    every caller - confirmed both ai-agent's inbound route AND web's own
+#    outbound route to ai-agent already showed the 240s below.
+# 2. The web-api-gateway pod is a SEPARATE Envoy instance that builds its
+#    route to "web" straight from the HTTPRoute/Gateway CRDs, NOT from
+#    ServiceResolver/ServiceDefaults - its route had no timeout key at all
+#    (Envoy's raw, unconfigurable-here 15s default). This was the actual
+#    cause of the still-reported 504s/net::ERR_INCOMPLETE_CHUNKED_ENCODING
+#    even after ai-agent's and web's own timeouts were both already fixed:
+#    the browser-facing connection was being cut by the gateway itself. Gateway
+#    API v1beta1's HTTPRoute has no native `timeouts` field (that's v1 GA,
+#    not installed here) - Consul's RouteTimeoutFilter CRD is the equivalent
+#    for this version, attached to web-route via `filters`.
+#
+# Kept separate from deploy-k8s/*.yaml so the AWS flow is unaffected.
+#
+# Below that: user-mcp's timeout is for a DIFFERENT reason, unrelated to
+# local LLM speed — writes gated by CIBA block the whole call chain
+# (ai-agent -> user-mcp -> Keycloak) for however long the human takes to
+# approve/deny on their device, up to a bounded poll deadline
+# (USER_MCP_CIBA_POLL_TIMEOUT_SECONDS, ~110s). ServiceResolver.requestTimeout
+# is what governs each hop. token-exchange keeps the same generous timeout as
+# harmless margin, though it no longer sits on that blocking path itself —
+# CIBA now runs entirely inside user-mcp against Keycloak directly.
+#
+# user-mcp's ServiceDefaults (protocol + localRequestTimeoutMs) lives in
+# deploy-k8s/service-defaults-user-mcp.yaml, NOT here — that file also
+# carries the ext_authz extension for opa-mcp-authz, which IS part of this
+# demo's deploy flow (`make deploy` applies it). A duplicate, ext_authz-less
+# ServiceDefaults/user-mcp here would silently strip that extension whenever
+# this file is applied after it (kubectl apply overwrites the whole spec for
+# a same-name object) — so only the ServiceResolver (a separate CRD kind,
+# not defined anywhere else) belongs in this file.
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: user-mcp
+spec:
+  requestTimeout: 150s
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: token-exchange
+spec:
+  requestTimeout: 150s
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: token-exchange
+spec:
+  protocol: http
+  localRequestTimeoutMs: 150000
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: ai-agent
+spec:
+  requestTimeout: 240s
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: ai-agent
+spec:
+  protocol: http
+  localRequestTimeoutMs: 240000
+---
+# ai-agent -> litellm-gateway -> Ollama is a NEW mesh hop (litellm-gateway
+# didn't exist when the rest of this file's timeouts were set) - ai-agent
+# used to call Ollama directly, outside the mesh entirely, so no sidecar
+# ever imposed a timeout on that leg. Routing it through a mesh-enrolled
+# gateway means Envoy's unconfigured ~15s default now applies here too,
+# cutting off slow local-model generations mid-stream
+# (httpx.RemoteProtocolError: peer closed connection) exactly like the
+# other hops in this file before they got the same fix.
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: litellm-gateway
+spec:
+  requestTimeout: 240s
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: litellm-gateway
+spec:
+  protocol: http
+  localRequestTimeoutMs: 240000
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceResolver
+metadata:
+  name: web
+spec:
+  requestTimeout: 240s
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: web
+spec:
+  protocol: http
+  localRequestTimeoutMs: 240000
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: RouteTimeoutFilter
+metadata:
+  name: web-route-timeout
+spec:
+  requestTimeout: 280s
+  idleTimeout: 120s
+---
+# Re-declaration of deploy-k8s/web-app-gateway.yaml's HTTPRoute, adding the
+# filter reference above. kubectl apply merges this into the existing
+# object (same name/namespace) rather than creating a second route.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: web-route
+spec:
+  parentRefs:
+    - name: web-api-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: consul.hashicorp.com
+            kind: RouteTimeoutFilter
+            name: web-route-timeout
+      backendRefs:
+        - name: web
+          port: 8080

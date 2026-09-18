@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-agent
+  template:
+    metadata:
+      labels:
+        app: ai-agent
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: 'false'
+
+        # ---- consul-mcp-authz discovery ----
+        # Marks this workload as an MCP-authz "agent" — the source side of
+        # rule entries. consul-mcp-authz scans Consul ServiceMeta for
+        # this annotation to populate GET /v1/agents.
+        consul.hashicorp.com/service-meta-agent-tool-authz-role: "agent"
+
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "agent-role"
+
+        # Set auth method to JWT
+        vault.hashicorp.com/auth-type: "jwt"
+        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
+
+        # The "path" parameter for the JWT auth method is passed via this annotation:
+        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
+        
+        # The template to fetch the OIDC token and write it to disk
+        vault.hashicorp.com/agent-inject-secret-actor-token: "identity/oidc/token/agent-role"
+        vault.hashicorp.com/agent-inject-template-actor-token: |
+          {{- with secret "identity/oidc/token/agent-role" -}}
+          {{ .Data.token }}
+          {{- end -}}
+        vault.hashicorp.com/tls-skip-verify: "true"
+    spec:
+      serviceAccountName: ai-agent
+      containers:
+        - name: ai-agent
+          image: panchalravi/agentguard-ai-agent:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: TOKEN_EXCHANGE_URL
+              value: http://token-exchange.virtual.consul/v1/identity/obo-token
+            - name: ACTOR_TOKEN_PATH
+              value: /vault/secrets/actor-token
+            - name: USER_MCP_URL
+              value: http://litellm-gateway.virtual.consul:4000/user_mcp/mcp
+            - name: LITELLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: litellm-gateway-env
+                  key: LITELLM_MASTER_KEY
+          volumeMounts:
+            - name: app-env
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+      volumes:
+        - name: app-env
+          secret:
+            secretName: ai-agent-env
+            items:
+              - key: .env
+                path: .env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-agent
+spec:
+  selector:
+    app: ai-agent
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ai-agent

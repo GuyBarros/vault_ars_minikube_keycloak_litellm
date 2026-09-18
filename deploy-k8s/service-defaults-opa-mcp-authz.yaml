@@ -1,0 +1,12 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: opa-mcp-authz
+  namespace: default
+spec:
+  # opa's envoy_ext_authz_grpc plugin speaks real gRPC (HTTP/2) on 9191.
+  # Without this, opa-mcp-authz inherits the global `protocol: http` from
+  # proxy-defaults.yaml, so the sidecar proxies to the local OPA process
+  # as HTTP/1.1 — a protocol mismatch that 502s every request and trips
+  # user-mcp's ext-authz statusOnError (403) fail-closed fallback.
+  protocol: grpc

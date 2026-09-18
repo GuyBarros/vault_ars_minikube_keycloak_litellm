@@ -1,0 +1,29 @@
+[project]
+name = "ai-agent"
+version = "0.1.0"
+description = "FastAPI-based AI agent runtime"
+readme = "SPEC.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "httpx>=0.28",
+    "langchain",
+    "langchain-deepseek>=1.0.1",
+    "langchain-google-genai>=4.2.1",
+    "langchain-ibm>=1.1.0",
+    "langchain-mcp-adapters>=0.1.0",
+    "langchain-ollama>=1.1.0",
+    "langchain-openai",
+    "openai",
+    "pydantic",
+    "python-dotenv",
+    "uvicorn",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
+[tool.uv]
+package = false

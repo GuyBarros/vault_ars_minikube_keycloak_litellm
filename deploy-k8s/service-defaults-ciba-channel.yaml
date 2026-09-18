@@ -1,0 +1,12 @@
+# Without this, Consul treats ciba-channel as opaque TCP, so
+# ciba-channel-gateway.yaml's HTTPRoute can never attach to it ("route
+# protocol does not match targeted service protocol") - see
+# service-defaults-keycloak.yaml, which hit the same gap for Keycloak's own
+# gateway.
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: ciba-channel
+  namespace: default
+spec:
+  protocol: http

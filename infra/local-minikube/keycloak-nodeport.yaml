@@ -1,0 +1,17 @@
+# Local-only direct access to Keycloak at localhost:8081 (no kubectl
+# port-forward needed - see bootstrap.sh's --ports publishing, 8081->30081).
+#
+# Patches the Service that deploy-k8s/keycloak-gateway.yaml's Consul API
+# Gateway auto-creates (named after the Gateway, "keycloak-api-gateway") to a
+# fixed NodePort, mirroring web-nodeport.yaml. Apply keycloak-gateway.yaml
+# first (creates this Service).
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak-api-gateway
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 30081

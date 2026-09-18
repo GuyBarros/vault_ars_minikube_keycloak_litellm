@@ -1,0 +1,75 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: ai-agent
+  namespace: default
+spec:
+  protocol: http
+  envoyExtensions:
+  - name: "builtin/lua" # has to be this so it can be recognized by envoy
+    arguments:
+      proxyType: "connect-proxy"
+      listener: "inbound"
+      script: |-
+        -- Built once at script load, reused across requests.
+        -- Lua patterns use % for escaping; | (alternation) is not supported.
+        local injection_patterns = {
+          "ignore.-instructions", "disregard.-instructions", "forget.-instructions",
+          "skip.-instructions", "override.-instructions", "ignore.-rules",
+          "you are now", "act as", "persona:", "take on the role of",
+          "unfiltered", "unrestricted", "do anything now", "dan%s?mode",
+          "print.-prompt", "show.-prompt", "reveal.-prompt", "repeat.-prompt",
+          "output as code", "output as json", "output as base64",
+          "###%s*instruction", "system:", "user:", "assistant:", "<|system|>",
+          "the new rule is", "from now on", "end of previous conversation",
+          "translate.-and then execute",
+        }
+
+        local direct_patterns = {
+          "eval%s*%(", "exec%s*%(", "os%.system%s*%(", "subprocess%.popen%s*%(",
+          "subprocess%.call%s*%(", "subprocess%.run%s*%(",
+          "rm%s+-rf", "sudo%s+rm", "sudo%s+chmod", "sudo%.chown", "sudo%s+dd", "sudo%s+mkfs",
+          "curl.-|.-bash", "curl.-|.-sh", "curl.-|.-zsh",
+          "/etc/passwd", "/etc/shadow", "%.%.%/%.%.%/",
+          "[%s/]%.env",
+        }
+
+        -- Matched with the %f[set] frontier pattern = native \b word boundary in LuaJIT.
+        local restricted_words = {
+          "ls", "cd", "pwd", "cat", "mkdir", "touch", "whoami", "id", "uname",
+          "hostname", "ps", "top", "kill", "df", "du",
+          "python", "python3", "node", "perl", "php", "ruby", "gcc", "make",
+        }
+
+        local function block(handle, category, detail)
+          handle:logWarn("Blocked (" .. category .. "): " .. detail)
+          handle:respond(
+            {[":status"] = "403", ["content-type"] = "text/plain"},
+            "Blocked: " .. category
+          )
+        end
+
+        function envoy_on_request(request_handle)
+          local body = request_handle:body(true)
+          if not body or body:length() == 0 then return end
+
+          local content = body:getBytes(0, body:length()):lower()
+
+          for _, p in ipairs(injection_patterns) do
+            if string.find(content, p, 1, false) then
+              return block(request_handle, "prompt injection", p)
+            end
+          end
+
+          for _, p in ipairs(direct_patterns) do
+            if string.find(content, p, 1, false) then
+              return block(request_handle, "code execution / sensitive path", p)
+            end
+          end
+
+          for _, w in ipairs(restricted_words) do
+            if string.find(content, "%f[%w]" .. w .. "%f[%W]", 1, false) then
+              return block(request_handle, "restricted command", w)
+            end
+          end
+        end

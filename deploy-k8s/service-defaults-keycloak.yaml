@@ -1,0 +1,11 @@
+# Without this, Consul treats keycloak as opaque TCP, so keycloak-gateway.yaml's
+# HTTPRoute can never attach to it ("route protocol does not match targeted
+# service protocol") — breaking both browser login and Vault's in-cluster
+# JWKS lookup (see keycloak.sh's KEYCLOAK_INTERNAL_JWKS).
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: keycloak
+  namespace: default
+spec:
+  protocol: http

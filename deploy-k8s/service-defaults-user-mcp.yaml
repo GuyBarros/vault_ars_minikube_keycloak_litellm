@@ -1,0 +1,32 @@
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceDefaults
+metadata:
+  name: user-mcp
+  namespace: default
+spec:
+  # Writes gated by CIBA block on the human-approval round trip (up to
+  # USER_MCP_CIBA_POLL_TIMEOUT_SECONDS, ~110s default) before responding.
+  # Without this, Envoy's unconfigured default (~15s) would 504 the request
+  # well before Keycloak CIBA resolves.
+  localRequestTimeoutMs: 150000
+  envoyExtensions:
+  - arguments:
+      config:
+        clearRouteCache: false
+        failureModeAllow: false
+        grpcService:
+          target:
+            service:
+              name: opa-mcp-authz
+          timeout: 500ms
+        includePeerCertificate: true
+        statusOnError: 403
+        transportApiVersion: V3
+        withRequestBody:
+          allowPartialMessage: false
+          maxRequestBytes: 65536
+          packAsBytes: false
+      proxyType: connect-proxy
+    name: builtin/ext-authz
+    required: true
+  protocol: http

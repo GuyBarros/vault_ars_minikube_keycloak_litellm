@@ -1,0 +1,34 @@
+# Dedicated Consul API Gateway front door for Keycloak, mirroring
+# web-app-gateway.yaml. Browsers are not mesh workloads, so they cannot pass
+# service-intentions on keycloak's own inbound sidecar directly; the gateway
+# is the one mesh-authorized caller (see service-intentions.yaml) and browser
+# traffic terminates here, same pattern as web-api-gateway -> web.
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: Gateway
+metadata:
+  name: keycloak-api-gateway
+spec:
+  gatewayClassName: consul
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: HTTPRoute
+metadata:
+  name: keycloak-route
+spec:
+  parentRefs:
+    - name: keycloak-api-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: keycloak
+          port: 8080

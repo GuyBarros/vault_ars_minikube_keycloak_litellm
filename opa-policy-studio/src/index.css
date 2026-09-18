@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --color-surface: 15 17 23;
+  --color-panel: 21 25 34;
+  --color-border: 42 50 66;
+  --color-muted: 155 167 191;
+  --color-accent: 109 125 255;
+  --color-success: 34 197 94;
+  --color-danger: 239 68 68;
+  --color-foreground: 229 231 235;
+  --color-subtle: 148 163 184;
+  --page-bg: radial-gradient(circle at 15% 0%, #1a2131 0, #0a0d14 48%, #07090e 100%);
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Ubuntu,
+    Cantarell,
+    Noto Sans,
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--page-bg);
+  color: rgb(var(--color-foreground));
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-surface: 248 250 252;
+  --color-panel: 241 245 249;
+  --color-border: 203 213 225;
+  --color-muted: 71 85 105;
+  --color-accent: 79 70 229;
+  --color-success: 21 128 61;
+  --color-danger: 220 38 38;
+  --color-foreground: 15 23 42;
+  --color-subtle: 100 116 139;
+  --page-bg: radial-gradient(circle at 15% 0%, #e9eef9 0, #f7f9fc 45%, #ffffff 100%);
+}

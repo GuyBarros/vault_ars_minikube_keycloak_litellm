@@ -1,0 +1,207 @@
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: token-exchange
+  namespace: default
+spec:
+  destination:
+    name: token-exchange
+    namespace: default
+  sources:
+    - name: ai-agent
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: ai-agent
+  namespace: default
+spec:
+  destination:
+    name: ai-agent
+    namespace: default
+  sources:
+    # web no longer calls ai-agent directly; LiteLLM is the PEP.
+    - name: litellm-gateway
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: litellm-gateway
+  namespace: default
+spec:
+  destination:
+    name: litellm-gateway
+    namespace: default
+  sources:
+    - name: ai-agent
+      action: allow
+      namespace: default
+    - name: web
+      action: allow
+      namespace: default
+    # Browser / desktop admin UI - see litellm-gateway-gateway.yaml.
+    - name: litellm-api-gateway
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: wx-gov-api
+  namespace: default
+spec:
+  destination:
+    name: wx-gov-api
+    namespace: default
+  sources:
+    - name: ai-agent
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: opa-service
+  namespace: opa
+spec:
+  destination:
+    name: opa-service
+    namespace: opa
+  sources:
+    - name: ai-agent
+      action: allow
+      namespace: default
+    - name: opa-gov-api
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: opa-gov-api
+  namespace: default
+spec:
+  destination:
+    name: opa-gov-api
+    namespace: default
+  sources:
+    - name: ai-agent
+      action: allow
+      namespace: default
+    - name: litellm-gateway
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: user-mcp
+  namespace: default
+spec:
+  destination:
+    name: user-mcp
+    namespace: default
+  sources:
+  # MCP tools/call now arrives from the LiteLLM PEP, not ai-agent.
+  - action: allow
+    name: litellm-gateway
+    namespace: default
+  - action: allow
+    name: consul-mcp-authz
+    namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: opa-mcp-authz
+  namespace: default
+spec:
+  destination:
+    name: opa-mcp-authz
+    namespace: default
+  sources:
+    # user-mcp's ServiceDefaults wires builtin/ext-authz to call out to
+    # opa-mcp-authz on every request. Without this intention, transparent
+    # proxy never builds the upstream cluster for it, so the ext-authz
+    # xDS patch fails, Envoy's admin port never binds, and user-mcp's
+    # readiness probe fails forever.
+    - name: user-mcp
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: web
+  namespace: default
+spec:
+  destination:
+    name: web
+    namespace: default
+  sources:
+    - name: web-api-gateway
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: keycloak
+  namespace: default
+spec:
+  destination:
+    name: keycloak
+    namespace: default
+  sources:
+    # Browser traffic terminates at the gateway (see keycloak-gateway.yaml) —
+    # it is the one mesh-authorized front door for direct/browser access.
+    - name: keycloak-api-gateway
+      action: allow
+      namespace: default
+    # Server-side OBO/CIBA token exchange and JWKS/discovery fetches.
+    - name: token-exchange
+      action: allow
+      namespace: default
+    - name: user-mcp
+      action: allow
+      namespace: default
+    # LiteLLM admin UI SSO: server-side code->token and userinfo.
+    - name: litellm-gateway
+      action: allow
+      namespace: default
+    # web-app's own server-side OIDC code<->token exchange and id_token JWKS
+    # verification talk to Keycloak directly (not via token-exchange).
+    - name: web
+      action: allow
+      namespace: default
+    # The CIBA approve/deny callback (ext/ciba/auth/callback).
+    - name: ciba-channel
+      action: allow
+      namespace: default
+---
+apiVersion: consul.hashicorp.com/v1alpha1
+kind: ServiceIntentions
+metadata:
+  name: ciba-channel
+  namespace: default
+spec:
+  destination:
+    name: ciba-channel
+    namespace: default
+  sources:
+    # Keycloak's CIBA HTTP Authentication Channel SPI posts each pending
+    # backchannel request here (see deploy-k8s/keycloak.yaml's
+    # --spi-ciba-auth-channel-* startup flag).
+    - name: keycloak
+      action: allow
+      namespace: default
+    # Human approval page - see ciba-channel-gateway.yaml's own comment for
+    # why browsers must go through the gateway instead of ciba-channel directly.
+    - name: ciba-channel-gateway
+      action: allow
+      namespace: default

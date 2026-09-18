@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+
+from models import UserRecord
+
+
+class UserRepository(ABC):
+    """Async user repository abstraction. Implementations may persist to a
+    JSON file (in-memory) or to Postgres."""
+
+    @abstractmethod
+    async def list_all(self) -> list[UserRecord]: ...
+
+    @abstractmethod
+    async def search_by_first_name(self, first_name: str) -> list[UserRecord]: ...
+
+    @abstractmethod
+    async def create(self, user: UserRecord) -> UserRecord: ...
+
+    @abstractmethod
+    async def delete_by_email(self, email: str) -> UserRecord: ...
+
+    @abstractmethod
+    async def update_by_email(self, email: str, user: UserRecord) -> UserRecord: ...
+
+    async def startup(self) -> None:  # pragma: no cover - default no-op
+        return None
+
+    async def shutdown(self) -> None:  # pragma: no cover - default no-op
+        return None
+
+    def get_last_assurance(self) -> dict | None:
+        """The PDP_Decision (LoA level reached, ALLOW/DENY/...) for the most
+        recent call on *this request*. Only PostgresUserRepository has a real
+        concept of this (Vault CIBA step-up) - the file backend has no
+        assurance mechanism, so the default is always None."""
+        return None
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()

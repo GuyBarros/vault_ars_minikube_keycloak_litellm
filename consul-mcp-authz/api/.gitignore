@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.env
+.DS_Store
+
+# The policy directory is copied in from ../opa-mcp-auth/policy at build
+# time so the Docker image contains a stable snapshot of the .rego the
+# validator runs against. The source of truth lives at
+# ../opa-mcp-auth/policy — do not commit a divergent copy here.
+policy/

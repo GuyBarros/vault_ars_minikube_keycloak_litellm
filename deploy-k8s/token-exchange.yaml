@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: token-exchange
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: token-exchange
+  template:
+    metadata:
+      annotations:
+        consul.hashicorp.com/connect-inject: "true"
+        consul.hashicorp.com/enable-metrics-merging: 'false'
+      labels:
+        app: token-exchange
+    spec:
+      serviceAccountName: token-exchange
+      containers:
+        - name: token-exchange
+          image: panchalravi/agentguard-token-exchange:latest
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: token-exchange-env
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+          resources:
+            limits:
+              memory: "200Mi"
+              cpu: "256m"
+            requests:
+              memory: "100Mi"
+              cpu: "128m"
+      volumes:
+        - name: token-exchange-env
+          secret:
+            secretName: token-exchange-env
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: token-exchange
+spec:
+  selector:
+    app: token-exchange
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: token-exchange

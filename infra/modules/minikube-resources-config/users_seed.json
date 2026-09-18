@@ -1,0 +1,56 @@
+[
+  {
+    "first_name": "Amelia",
+    "last_name": "Wilson",
+    "ssn": "591-00-9242",
+    "phone": "+1-812-669-2470",
+    "email": "amelia.wilson475@example.com",
+    "credit_card_number": "0388-6685-4496-5569",
+    "ip_address": "19.229.74.152"
+  },
+  {
+    "first_name": "Henry",
+    "last_name": "Davis",
+    "ssn": "231-05-3839",
+    "phone": "+1-088-393-8653",
+    "email": "henry.davis409@example.com",
+    "credit_card_number": "1980-9699-1980-8063",
+    "ip_address": "75.157.149.113"
+  },
+  {
+    "first_name": "Noah",
+    "last_name": "Thompson",
+    "ssn": "714-83-8341",
+    "phone": "+1-461-252-3994",
+    "email": "noah.thompson206@example.com",
+    "credit_card_number": "2391-5556-0490-6326",
+    "ip_address": "34.226.225.173"
+  },
+  {
+    "first_name": "Mia",
+    "last_name": "Williams",
+    "ssn": "369-20-3281",
+    "phone": "+1-210-559-3064",
+    "email": "mia.williams670@example.com",
+    "credit_card_number": "1848-7392-1645-6205",
+    "ip_address": "75.44.47.208"
+  },
+  {
+    "first_name": "Charlotte",
+    "last_name": "Anderson",
+    "ssn": "640-76-1524",
+    "phone": "+1-074-756-9987",
+    "email": "charlotte.anderson799@example.com",
+    "credit_card_number": "2909-6058-3186-0764",
+    "ip_address": "7.113.231.144"
+  },
+  {
+    "first_name": "Noah",
+    "last_name": "Miller",
+    "ssn": "694-46-9494",
+    "phone": "+1-770-013-9159",
+    "email": "noah.miller24@example.com",
+    "credit_card_number": "8372-4679-0078-0733",
+    "ip_address": "78.215.154.246"
+  }
+]

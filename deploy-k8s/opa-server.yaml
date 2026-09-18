@@ -1,0 +1,72 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opa-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opa-server
+spec:
+  replicas: 1  # High availability is recommended for centralized services
+  selector:
+    matchLabels:
+      app: opa-server
+  template:
+    metadata:
+      annotations:
+        consul.hashicorp.com/connect-inject: 'true'  # Enable Consul Connect sidecar injection
+        consul.hashicorp.com/enable-metrics-merging: 'false'
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "opa-server"
+
+        # Set auth method to JWT
+        vault.hashicorp.com/auth-type: "jwt"
+        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
+
+        # The "path" parameter for the JWT auth method is passed via this annotation:
+        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
+
+        # The template to fetch the OPA policies and write them to disk       
+        vault.hashicorp.com/agent-inject-secret-policies: "opa-policies/data/bundle"
+        vault.hashicorp.com/agent-inject-template-policies: |
+          {{- with secret "opa-policies/data/bundle" -}}
+            {{- range $key, $value := .Data.data -}}
+              {{- /* Write each value to a file named after its key */ -}}
+              {{- $value | writeToFile (printf "/vault/secrets/%s" $key) "vault" "vault" "0644" -}}
+            {{- end -}}
+          {{- end -}}       
+        vault.hashicorp.com/tls-skip-verify: "true"       
+      labels:
+        app: opa-server
+    spec:
+      serviceAccountName: opa-service
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:latest
+          args: ["run", "--server", "--ignore=.*", "--addr=0.0.0.0:8181", "/vault/secrets"]
+          ports:
+            - containerPort: 8181
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-service
+spec:
+  selector:
+    app: opa-server
+  type: ClusterIP
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8181

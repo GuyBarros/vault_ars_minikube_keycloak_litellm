@@ -1,0 +1,61 @@
+global:
+  enabled: true
+  name: consul
+  datacenter: ${datacenter}
+  logLevel: info
+  metrics:
+    enabled: true
+    enableGatewayMetrics: true
+  image: "hashicorp/consul-enterprise:${consul_version}"
+  tls:
+    enabled: true
+    enableAutoEncrypt: true
+  acls:
+    manageSystemACLs: true
+    bootstrapToken:
+      secretName: consul-bootstrap-token
+      secretKey: token
+  # Enterprise namespaces + k8s-namespace mirroring, so workloads register into a
+  # Consul namespace matching their k8s namespace (e.g. default, opa). The
+  # consul-mcp-authz ACL policy reads catalog across all namespaces to match.
+  enableConsulNamespaces: true
+  enterpriseLicense:
+    secretName: consul-ent-license
+    secretKey: key
+server:
+  enabled: true
+  replicas: 1
+  bootstrapExpect: 1
+  storage: 5Gi
+ui:
+  enabled: true
+  service:
+    enabled: true
+    type: NodePort
+    nodePort:
+      https: ${consul_node_port}
+# Sidecar (Envoy) injection for the deploy-k8s workloads, which carry
+# `consul.hashicorp.com/connect-inject: "true"` and rely on ServiceIntentions /
+# ServiceDefaults / API Gateway CRDs. The in-cluster server runs the injector
+# webhook directly — no separate Consul client release is needed.
+connectInject:
+  enabled: true
+  metrics:
+    defaultEnabled: true
+    defaultEnableMerging: true
+    defaultMergedMetricsPort: 20100
+  consulNamespaces:
+    mirroringK8S: true
+  sidecarProxy:
+    lifecycle:
+      defaultEnabled: true
+      defaultStartupGracePeriodSeconds: 30
+  apiGateway:
+    manageExternalCRDs: true
+    managedGatewayClass:
+      deployment:
+        defaultInstances: 1
+        minInstances: 1
+        maxInstances: 2
+dns:
+  enabled: true
