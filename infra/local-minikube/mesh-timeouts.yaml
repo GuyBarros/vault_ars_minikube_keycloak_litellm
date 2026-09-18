@@ -104,6 +104,29 @@ metadata:
 spec:
   protocol: http
   localRequestTimeoutMs: 240000
+  # Caller identity for litellm-gateway/pdp_auth.py, replacing the shared
+  # master key. Consul's own inbound listener strips x-forwarded-client-cert
+  # before the app sees it, so read the verified mTLS peer's SPIFFE ID straight
+  # from the connection instead. Any client-supplied copy of the header is
+  # removed first - pdp_auth.py trusts x-mesh-caller-spiffe only because this
+  # filter is the sole writer of it.
+  envoyExtensions:
+    - name: builtin/lua
+      arguments:
+        proxyType: connect-proxy
+        listener: inbound
+        script: |-
+          function envoy_on_request(request_handle)
+            local headers = request_handle:headers()
+            headers:remove("x-mesh-caller-spiffe")
+            local ssl = request_handle:streamInfo():downstreamSslConnection()
+            if ssl ~= nil then
+              local uris = ssl:uriSanPeerCertificate()
+              if uris ~= nil and #uris > 0 then
+                headers:add("x-mesh-caller-spiffe", uris[1])
+              end
+            end
+          end
 ---
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceResolver
