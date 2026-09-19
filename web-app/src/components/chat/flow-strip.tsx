@@ -6,25 +6,29 @@ type NodeDef = {
   key: string;
   x: number;
   y: number;
-  label: string[];
+  label: string;
+  role: string;
+  tool: string;
   color: string;
 };
 
-const AGENT_Y = 55;
-const HUB_Y = 165;
-const TOOL_Y = 280;
-const ARC_DIP = 60;
+const AGENT_Y = 48;
+const HUB_Y = 188;
+const TOOL_Y = 338;
+const ARC_DIP = 58;
 
 const NODES: NodeDef[] = [
-  { key: 'agent', x: 420, y: AGENT_Y, label: ['AI Agent'], color: '#009d9a' },
-  { key: 'user', x: 70, y: HUB_Y, label: ['User'], color: '#0f62fe' },
-  { key: 'webapp', x: 245, y: HUB_Y, label: ['Web App'], color: '#33b1ff' },
-  { key: 'policy', x: 420, y: HUB_Y, label: ['Policy Engine', '(OPA, wxg)'], color: '#8a3ffc' },
-  { key: 'obo', x: 770, y: HUB_Y, label: ['token-exchange', '(OBO)'], color: '#ee5396' },
-  { key: 'verify', x: 1080, y: HUB_Y, label: ['Keycloak'], color: '#da1e28' },
-  { key: 'mcp', x: 770, y: TOOL_Y, label: ['user-mcp'], color: '#198038' },
-  { key: 'vault', x: 1080, y: TOOL_Y, label: ['Vault'], color: '#ff832b' },
-  { key: 'db', x: 1340, y: TOOL_Y, label: ['Database'], color: '#6929c4' },
+  { key: 'agent', x: 470, y: AGENT_Y, label: 'AI Agent', role: 'orquestra', tool: '/v1/agent/query', color: '#009d9a' },
+  { key: 'opa', x: 655, y: AGENT_Y, label: 'OPA', role: 'PDP', tool: 'mcp.pep /decision', color: '#a56eff' },
+  { key: 'user', x: 55, y: HUB_Y, label: 'User', role: 'canal', tool: 'browser', color: '#0f62fe' },
+  { key: 'webapp', x: 215, y: HUB_Y, label: 'Web App', role: 'BFF', tool: 'login · /api/agent/query', color: '#33b1ff' },
+  { key: 'pep', x: 470, y: HUB_Y, label: 'LiteLLM', role: 'PEP + AI Gateway', tool: 'pdp_auth · pdp_mcp', color: '#8a3ffc' },
+  { key: 'obo', x: 760, y: HUB_Y, label: 'token-exchange', role: 'broker OBO', tool: 'RFC 8693 · /obo-token', color: '#ee5396' },
+  { key: 'verify', x: 1040, y: HUB_Y, label: 'Keycloak', role: 'IdP', tool: 'login · OBO · CIBA', color: '#da1e28' },
+  { key: 'ciba', x: 1320, y: HUB_Y, label: 'ciba-channel', role: 'HITL LoA2', tool: 'Approve/Deny :8082', color: '#fa4d56' },
+  { key: 'mcp', x: 760, y: TOOL_Y, label: 'user-mcp', role: 'runtime MCP', tool: 'SQL · jwt_identity_bound', color: '#198038' },
+  { key: 'vault', x: 1040, y: TOOL_Y, label: 'Vault', role: 'segredos', tool: 'database/creds · Transform', color: '#ff832b' },
+  { key: 'db', x: 1320, y: TOOL_Y, label: 'Database', role: 'dados', tool: 'Postgres', color: '#6929c4' },
 ];
 
 const NODE_BY_KEY: Record<string, NodeDef> = Object.fromEntries(
@@ -32,10 +36,12 @@ const NODE_BY_KEY: Record<string, NodeDef> = Object.fromEntries(
 );
 
 const R = 11;
-const POLICY_R = 17;
-const radiusOf = (key: string) => (key === 'policy' ? POLICY_R : R);
+const PEP_R = 17;
+const OPA_R = 13;
+const radiusOf = (key: string) =>
+  key === 'pep' ? PEP_R : key === 'opa' ? OPA_R : R;
 
-const BOUNDARY = { x: 350, y: 25, width: 140, height: 200 };
+const BOUNDARY = { x: 385, y: 10, width: 330, height: 248 };
 
 function lineSegment(fromKey: string, toKey: string, headRoom = 8) {
   const a = NODE_BY_KEY[fromKey]!;
@@ -61,19 +67,35 @@ function verticalOffset(fromKey: string, toKey: string, xOffset: number, headRoo
   return `M ${a.x + xOffset} ${sy} L ${b.x + xOffset} ${ey}`;
 }
 
+function dist(fromKey: string, toKey: string) {
+  const a = NODE_BY_KEY[fromKey]!;
+  const b = NODE_BY_KEY[toKey]!;
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function quadLen(fromKey: string, toKey: string, cpx: number, cpy: number) {
+  const a = NODE_BY_KEY[fromKey]!;
+  const b = NODE_BY_KEY[toKey]!;
+  const chord = Math.hypot(b.x - a.x, b.y - a.y);
+  const poly =
+    Math.hypot(cpx - a.x, cpy - a.y) + Math.hypot(b.x - cpx, b.y - cpy);
+  return (chord + poly) / 2;
+}
+
 type Edge = { d: string; arrowEnd?: boolean };
 
 const STATIC_EDGES: Edge[] = [
   { d: lineSegment('user', 'webapp'), arrowEnd: true },
-  { d: lineSegment('webapp', 'policy'), arrowEnd: true },
-  { d: lineSegment('policy', 'obo'), arrowEnd: true },
+  { d: lineSegment('webapp', 'pep'), arrowEnd: true },
+  { d: lineSegment('pep', 'obo'), arrowEnd: true },
   { d: lineSegment('obo', 'verify'), arrowEnd: true },
+  { d: lineSegment('verify', 'ciba'), arrowEnd: true },
 
-  { d: verticalOffset('policy', 'agent', -7), arrowEnd: true },
-  { d: verticalOffset('agent', 'policy', +7), arrowEnd: true },
+  { d: verticalOffset('pep', 'agent', -7), arrowEnd: true },
+  { d: verticalOffset('agent', 'pep', +7), arrowEnd: true },
+  { d: lineSegment('pep', 'opa'), arrowEnd: true },
 
-  { d: lineSegment('policy', 'mcp') },
-
+  { d: lineSegment('pep', 'mcp') },
   { d: lineSegment('mcp', 'vault'), arrowEnd: true },
   {
     d: `M ${NODE_BY_KEY.mcp!.x + R + 2} ${TOOL_Y + 2} Q ${(NODE_BY_KEY.mcp!.x + NODE_BY_KEY.db!.x) / 2} ${TOOL_Y + ARC_DIP} ${NODE_BY_KEY.db!.x - R - 10} ${TOOL_Y + 4} L ${NODE_BY_KEY.db!.x - R - 6} ${TOOL_Y}`,
@@ -82,111 +104,99 @@ const STATIC_EDGES: Edge[] = [
 ];
 
 const N = NODE_BY_KEY;
-
-// Single continuous motion path. The streak follows the full lifecycle in one
-// unbroken stroke: every visit to AI Agent is bracketed by Policy Engine, and
-// every tool result returns through the boundary before reaching the user.
 const MID_MCP_DB_X = (N.mcp!.x + N.db!.x) / 2;
+
+// LoA1 list_users: Consul front door → PEP admit → orquestra → OBO → PDP → runtime.
 const MOTION_PATH = [
   `M ${N.user!.x} ${HUB_Y}`,
   `L ${N.webapp!.x} ${HUB_Y}`,
-  `L ${N.policy!.x} ${HUB_Y}`,
+  `L ${N.pep!.x} ${HUB_Y}`,
   `L ${N.agent!.x} ${AGENT_Y}`,
-  `L ${N.policy!.x} ${HUB_Y}`,
+  `L ${N.pep!.x} ${HUB_Y}`,
   `L ${N.obo!.x} ${HUB_Y}`,
   `L ${N.verify!.x} ${HUB_Y}`,
   `L ${N.obo!.x} ${HUB_Y}`,
-  `L ${N.policy!.x} ${HUB_Y}`,
-  `L ${N.agent!.x} ${AGENT_Y}`,
-  `L ${N.policy!.x} ${HUB_Y}`,
+  `L ${N.pep!.x} ${HUB_Y}`,
+  `L ${N.opa!.x} ${AGENT_Y}`,
+  `L ${N.pep!.x} ${HUB_Y}`,
   `L ${N.mcp!.x} ${TOOL_Y}`,
   `L ${N.vault!.x} ${TOOL_Y}`,
   `L ${N.mcp!.x} ${TOOL_Y}`,
   `Q ${MID_MCP_DB_X} ${TOOL_Y + ARC_DIP} ${N.db!.x} ${TOOL_Y}`,
   `Q ${MID_MCP_DB_X} ${TOOL_Y + ARC_DIP} ${N.mcp!.x} ${TOOL_Y}`,
-  `L ${N.policy!.x} ${HUB_Y}`,
+  `L ${N.pep!.x} ${HUB_Y}`,
   `L ${N.agent!.x} ${AGENT_Y}`,
-  `L ${N.policy!.x} ${HUB_Y}`,
+  `L ${N.pep!.x} ${HUB_Y}`,
   `L ${N.webapp!.x} ${HUB_Y}`,
   `L ${N.user!.x} ${HUB_Y}`,
 ].join(' ');
 
 const TRAIL_OFFSETS = [0, 0.18, 0.34, 0.5, 0.66];
-const MOTION_DUR = 35;
-// Each pass through the policy↔agent gate gets this much extra time relative
-// to its physical length, so the streak visibly slows while crossing the
-// boundary and the captions on those legs stay readable.
-const POLICY_AGENT_SLOWDOWN = 3;
+const MOTION_DUR = 38;
+const PEP_HOP_SLOWDOWN = 3;
 
-// Labels that travel with the streak. Order matches the segments of MOTION_PATH.
 const SEGMENT_LABELS = [
-  'subject_token + prompt', // user → webapp
-  'subject_token + prompt', // webapp → policy
-  'subject_token + verified prompt', // policy → agent
-  'subject_token + actor_token + scopes', // agent → policy
-  'subject_token + actor_token + scopes', // policy → obo
-  'subject_token + actor_token + scopes', // obo → verify
-  'OBO token', // verify → obo
-  'OBO token', // obo → policy
-  'OBO token', // policy → agent
-  'OBO token', // agent → policy
-  'OBO token', // policy → mcp
-  'OBO token', // mcp → vault
-  'JIT DB creds', // vault → mcp
-  'JIT DB creds', // mcp → db (arc)
-  'result', // db → mcp (arc)
-  'result', // mcp → policy
-  'result', // policy → agent
-  'sanitized result', // agent → policy
-  'sanitized result', // policy → webapp
-  'sanitized result', // webapp → user
+  'subject_token + prompt',
+  'SPIFFE default/web + JWT',
+  '/v1/agent/query',
+  'tool + required_scopes',
+  'OBO RFC 8693',
+  'subject + actor + scopes',
+  'OBO JWT aud=user-mcp',
+  'tools/call',
+  'POST mcp.pep/decision',
+  'enforce=inject_obo_jwt',
+  'X-Vault-Token',
+  'database/creds',
+  'JIT Postgres',
+  'SQL result',
+  'tool result',
+  'result',
+  'chat response',
+  'sanitized result',
+  'sanitized result',
+  'sanitized result',
 ];
 
-// Endpoint pairs for each segment, used to identify policy↔agent legs that
-// should be slowed down.
 const SEGMENT_NODES: ReadonlyArray<readonly [string, string]> = [
   ['user', 'webapp'],
-  ['webapp', 'policy'],
-  ['policy', 'agent'],
-  ['agent', 'policy'],
-  ['policy', 'obo'],
+  ['webapp', 'pep'],
+  ['pep', 'agent'],
+  ['agent', 'pep'],
+  ['pep', 'obo'],
   ['obo', 'verify'],
   ['verify', 'obo'],
-  ['obo', 'policy'],
-  ['policy', 'agent'],
-  ['agent', 'policy'],
-  ['policy', 'mcp'],
+  ['obo', 'pep'],
+  ['pep', 'opa'],
+  ['opa', 'pep'],
+  ['pep', 'mcp'],
   ['mcp', 'vault'],
   ['vault', 'mcp'],
   ['mcp', 'db'],
   ['db', 'mcp'],
-  ['mcp', 'policy'],
-  ['policy', 'agent'],
-  ['agent', 'policy'],
-  ['policy', 'webapp'],
+  ['mcp', 'pep'],
+  ['pep', 'agent'],
+  ['agent', 'pep'],
+  ['pep', 'webapp'],
   ['webapp', 'user'],
 ];
 
-// Q-arc lengths are approximated via the average of chord and control polygon
-// — accurate enough at this resolution.
-const SEGMENT_LENGTHS = [
-  175, 175, 110, 110, 350, 310, 310, 350, 110, 110,
-  368, 310, 310, 580, 580, 368, 110, 110, 175, 175,
-];
+const SEGMENT_LENGTHS = SEGMENT_NODES.map(([from, to]) => {
+  if (from === 'mcp' && to === 'db') return quadLen('mcp', 'db', MID_MCP_DB_X, TOOL_Y + ARC_DIP);
+  if (from === 'db' && to === 'mcp') return quadLen('db', 'mcp', MID_MCP_DB_X, TOOL_Y + ARC_DIP);
+  return dist(from, to);
+});
 
-const isPolicyAgent = (i: number) => {
+const isPepHop = (i: number) => {
   const [from, to] = SEGMENT_NODES[i]!;
   return (
-    (from === 'policy' && to === 'agent') ||
-    (from === 'agent' && to === 'policy')
+    (from === 'pep' && (to === 'agent' || to === 'opa')) ||
+    ((from === 'agent' || from === 'opa') && to === 'pep')
   );
 };
 
-// Weights drive how much DURATION each segment consumes; lengths drive how
-// much PATH each segment covers. Where weight > length proportion, the streak
-// spends more time per unit distance — i.e. moves slower.
 const SEGMENT_WEIGHTS = SEGMENT_LENGTHS.map((len, i) =>
-  isPolicyAgent(i) ? len * POLICY_AGENT_SLOWDOWN : len,
+  isPepHop(i) ? len * PEP_HOP_SLOWDOWN : len,
 );
 
 const TOTAL_LENGTH = SEGMENT_LENGTHS.reduce((a, b) => a + b, 0);
@@ -202,16 +212,12 @@ const cumulative = (arr: readonly number[]) =>
     [0],
   );
 
-// keyPoints (path-distance fractions) and keyTimes (time fractions) for
-// animateMotion calcMode="linear". Same length, both start at 0 and end at 1.
 const PATH_POINTS = cumulative(SEGMENT_LENGTHS).map((l) => l / TOTAL_LENGTH);
 const TIME_POINTS = cumulative(SEGMENT_WEIGHTS).map((w) => w / TOTAL_WEIGHT);
 
 const KEY_POINTS_STR = PATH_POINTS.map((p) => p.toFixed(4)).join(';');
 const KEY_TIMES_STR = TIME_POINTS.map((t) => t.toFixed(4)).join(';');
 
-// Label opacity windows are time-based, not path-based — they need to follow
-// the streak's actual position in time, which is now non-uniform.
 const segmentFraction = (idx: number) =>
   (TIME_POINTS[idx] ?? 0).toFixed(4);
 
@@ -249,10 +255,12 @@ export function FlowStrip() {
   return (
     <section
       className={`flow-strip${collapsed ? ' flow-strip--collapsed' : ''}`}
-      aria-label="Agent request flow"
+      aria-label="Fluxo do lab: Consul, LiteLLM PEP, OPA PDP, user-mcp"
     >
       <div className="flow-strip__header">
-        <span className="flow-strip__title">Request &amp; response flow</span>
+        <span className="flow-strip__title">
+          Lab flow · PEP LiteLLM · PDP OPA
+        </span>
         <button
           type="button"
           className="flow-strip__toggle"
@@ -292,7 +300,7 @@ export function FlowStrip() {
         <svg
           ref={svgRef}
           className="flow-strip__svg"
-          viewBox="0 0 1500 360"
+          viewBox="0 0 1540 430"
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-hidden="true"
@@ -311,22 +319,31 @@ export function FlowStrip() {
             </marker>
             <path id="fs-motion-path" d={MOTION_PATH} fill="none" />
 
-            <radialGradient id="fs-policy-halo" cx="50%" cy="50%" r="50%">
+            <radialGradient id="fs-pep-halo" cx="50%" cy="50%" r="50%">
               <stop offset="0%" stopColor="#8a3ffc" stopOpacity="0.28" />
               <stop offset="60%" stopColor="#8a3ffc" stopOpacity="0.08" />
               <stop offset="100%" stopColor="#8a3ffc" stopOpacity="0" />
             </radialGradient>
+            <radialGradient id="fs-opa-halo" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor="#a56eff" stopOpacity="0.22" />
+              <stop offset="70%" stopColor="#a56eff" stopOpacity="0.06" />
+              <stop offset="100%" stopColor="#a56eff" stopOpacity="0" />
+            </radialGradient>
           </defs>
 
-          {/* Policy halo behind everything else. */}
           <circle
-            cx={N.policy!.x}
-            cy={N.policy!.y}
-            r={POLICY_R + 22}
-            fill="url(#fs-policy-halo)"
+            cx={N.pep!.x}
+            cy={N.pep!.y}
+            r={PEP_R + 22}
+            fill="url(#fs-pep-halo)"
+          />
+          <circle
+            cx={N.opa!.x}
+            cy={N.opa!.y}
+            r={OPA_R + 16}
+            fill="url(#fs-opa-halo)"
           />
 
-          {/* Policy Boundary box wrapping AI Agent and Policy Engine. */}
           <rect
             className="fs-boundary"
             x={BOUNDARY.x}
@@ -341,10 +358,9 @@ export function FlowStrip() {
             x={BOUNDARY.x + 8}
             y={BOUNDARY.y + 14}
           >
-            POLICY BOUNDARY
+            PEP / PDP
           </text>
 
-          {/* Static edges. */}
           {STATIC_EDGES.map((e, i) => (
             <path
               key={i}
@@ -354,40 +370,61 @@ export function FlowStrip() {
             />
           ))}
 
-          {/* "Intent / Tool / Required Scope" label sits above the policy → obo arrow. */}
           <text
-            x={(N.policy!.x + N.obo!.x) / 2}
-            y={HUB_Y - 10}
+            x={(N.user!.x + N.webapp!.x) / 2}
+            y={HUB_Y - 14}
             textAnchor="middle"
             className="fs-annotation"
           >
-            Intent / Tool / Required Scope
+            Consul API GW :8080 · mTLS
+          </text>
+          <text
+            x={(N.pep!.x + N.obo!.x) / 2}
+            y={HUB_Y - 16}
+            textAnchor="middle"
+            className="fs-annotation"
+          >
+            tool / required_scopes
           </text>
 
-          {/* Nodes. */}
-          {NODES.map((n) => (
-            <g key={n.key} className="fs-node" data-key={n.key}>
-              <circle
-                cx={n.x}
-                cy={n.y}
-                r={radiusOf(n.key)}
-                style={{ fill: n.color, stroke: n.color }}
-              />
-              {n.label.map((line, i) => (
+          {NODES.map((n) => {
+            const r = radiusOf(n.key);
+            return (
+              <g key={n.key} className="fs-node" data-key={n.key}>
+                <circle
+                  cx={n.x}
+                  cy={n.y}
+                  r={r}
+                  style={{ fill: n.color, stroke: n.color }}
+                />
                 <text
-                  key={i}
                   x={n.x}
-                  y={n.y + radiusOf(n.key) + 22 + i * 18}
+                  y={n.y + r + 16}
                   textAnchor="middle"
                   className="fs-label"
                 >
-                  {line}
+                  {n.label}
                 </text>
-              ))}
-            </g>
-          ))}
+                <text
+                  x={n.x}
+                  y={n.y + r + 30}
+                  textAnchor="middle"
+                  className="fs-role"
+                >
+                  {n.role}
+                </text>
+                <text
+                  x={n.x}
+                  y={n.y + r + 43}
+                  textAnchor="middle"
+                  className="fs-tool"
+                >
+                  {n.tool}
+                </text>
+              </g>
+            );
+          })}
 
-          {/* Single streak: lead particle + 4 trailing copies. */}
           <g className="fs-particles">
             {TRAIL_OFFSETS.map((offset, i) => {
               const opacity = Math.max(0.18, 1 - i * 0.2);
@@ -409,9 +446,6 @@ export function FlowStrip() {
             })}
           </g>
 
-          {/* Traveling segment labels — one <text> per segment, all riding the
-              same motion path; opacity windows make exactly one visible at a
-              time so the caption swaps as the streak crosses each component. */}
           <g className="fs-flow-labels">
             {SEGMENT_LABELS.map((label, i) => {
               const isFirst = i === 0;
