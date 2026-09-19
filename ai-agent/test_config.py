@@ -30,7 +30,6 @@ def test_load_settings_logs_all_configured_values(monkeypatch, tmp_path, caplog)
         model="openai:gpt-5.4",
         ollama_base_url=None,
         litellm_base_url=None,
-        litellm_api_key=None,
         actor_token_path=Path(str(actor_token_path)),
         token_exchange_url="https://example.test/v1/identity/obo-token",
         token_exchange_timeout_seconds=42.5,

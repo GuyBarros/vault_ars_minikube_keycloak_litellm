@@ -55,11 +55,6 @@ spec:
               value: /vault/secrets/actor-token
             - name: USER_MCP_URL
               value: http://litellm-gateway.virtual.consul:4000/user_mcp/mcp
-            - name: LITELLM_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: litellm-gateway-env
-                  key: LITELLM_MASTER_KEY
           volumeMounts:
             - name: app-env
               mountPath: /app/.env

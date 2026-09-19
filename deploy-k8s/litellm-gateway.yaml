@@ -1,6 +1,6 @@
 # LiteLLM proxy: PEP/PDP for web -> agent, agent -> LLM, and agent -> MCP.
-# Callers authenticate with x-litellm-api-key; Authorization is forwarded
-# unchanged to the upstream (see litellm-gateway/config.yaml).
+# Callers are identified by their mesh (SPIFFE) identity; Authorization is
+# forwarded unchanged to the upstream (see litellm-gateway/config.yaml).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

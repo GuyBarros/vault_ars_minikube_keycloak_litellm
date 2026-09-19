@@ -46,7 +46,9 @@ def _build_base_llm(settings: Settings):
             settings.model,
             streaming=True,
             base_url=settings.litellm_base_url,
-            api_key=settings.litellm_api_key or "sk-litellm-local",
+            # The OpenAI client insists on a key; LiteLLM ignores it - the
+            # caller is admitted by its mesh identity (litellm-gateway/pdp_auth.py).
+            api_key="sk-litellm-local",
         )
     if settings.model.startswith("ollama:") and settings.ollama_base_url:
         return init_chat_model(
@@ -90,7 +92,6 @@ async def _discover_mcp_template_tools_at_startup(
     timeout_seconds: float = 30.0,
     max_attempts: int = 5,
     initial_backoff_seconds: float = 2.0,
-    litellm_api_key: str | None = None,
 ) -> list:
     """Discovery against user-mcp using no OBO, retried with backoff.
 
@@ -115,7 +116,6 @@ async def _discover_mcp_template_tools_at_startup(
                 None,
                 "startup",
                 timeout_seconds,
-                litellm_api_key=litellm_api_key,
             )
         except Exception as exc:  # noqa: BLE001 - startup discovery is best-effort
             if attempt == max_attempts:
@@ -167,7 +167,6 @@ def _wrap_mcp_tools_with_per_call_obo(
     bypass: bool,
     assurance_tracker: AssuranceTracker | None = None,
     tool_call_timeout_seconds: float = 30.0,
-    litellm_api_key: str | None = None,
 ) -> list:
     """Replace each MCP tool with a wrapper that exchanges a scope-specific
     OBO right before the upstream call. In bypass mode (no real user), pass
@@ -202,7 +201,6 @@ def _wrap_mcp_tools_with_per_call_obo(
                 user_mcp_url=user_mcp_url,
                 assurance_tracker=assurance_tracker,
                 tool_call_timeout_seconds=tool_call_timeout_seconds,
-                litellm_api_key=litellm_api_key,
             )
         )
     return wrapped
@@ -243,7 +241,6 @@ def create_app(
                 await _discover_mcp_template_tools_at_startup(
                     active_settings.user_mcp_url,
                     active_settings.mcp_tool_call_timeout_seconds,
-                    litellm_api_key=active_settings.litellm_api_key,
                 )
             )
 
@@ -362,7 +359,6 @@ def create_app(
                 bypass=request.app.state.settings.bypass_auth_token_exchange,
                 assurance_tracker=request.app.state.assurance_tracker,
                 tool_call_timeout_seconds=request.app.state.settings.mcp_tool_call_timeout_seconds,
-                litellm_api_key=request.app.state.settings.litellm_api_key,
             )
             tools = list(LOCAL_TOOLS) + scoped_tools
             runtime = _build_runtime_for_request(request.app.state.llm, tools)
@@ -404,6 +400,25 @@ def create_app(
         if assurance is None:
             return AssuranceResponse()
         return AssuranceResponse(**assurance)
+
+    # A2A agent card, for LiteLLM's Agents > Discovery. Public metadata only
+    # (no tokens); the mesh already limits who can reach this service. A2A
+    # clients look in different places depending on spec version, so serve all.
+    @app.get("/.well-known/agent-card.json")
+    @app.get("/.well-known/agent.json")
+    @app.get("/agent.json")
+    async def agent_card(request: Request) -> dict:
+        return {
+            "name": "ai-agent",
+            "description": "Governed user-management agent (OBO + CIBA). Chat via /v1/agent.",
+            "url": str(request.base_url).rstrip("/"),
+            "protocolVersion": "1.0",
+            "version": "1.0.0",
+            "capabilities": {},
+            "defaultInputModes": ["text"],
+            "defaultOutputModes": ["text"],
+            "skills": [],
+        }
 
     return app
 

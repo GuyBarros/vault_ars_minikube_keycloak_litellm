@@ -68,13 +68,7 @@ re-run `bootstrap.sh` (you'll need to redo `configure.sh` and the app deploy bel
 (seeded `users` table), the `k8s_jwt` Vault auth backend (validated against minikube's
 own SA signing key instead of an EKS OIDC endpoint), the OPA policy bundle, Vault's
 identity OIDC issuer/role, the `database` secrets engine (dynamic Postgres creds), and
-the Consul ACL token for consul-mcp-authz, and switching Consul's service mesh (Connect) CA
-from the built-in provider to Vault (`connect_root` / `connect_inter` PKI engines, which
-Consul creates itself; check with `consul connect ca get-config`). Vault and Postgres are
-both in the mesh (sidecars, `tcp` protocol, intentions in `mesh-vault-postgres.yaml`).
-Postgres is strict mTLS; Vault is `permissive` because the Consul servers, host NodePort
-and kubelet probes reach it from outside the mesh. Since Vault is also the mesh CA, a
-restarted (sealed) Vault can't get new leaf certs issued until it's unsealed by hand. The Keycloak-facing Vault config (jwt-keycloak,
+the Consul ACL token for consul-mcp-authz. The Keycloak-facing Vault config (jwt-keycloak,
 OAuth Resource Server, Agent Registry) is a separate stage — see `keycloak.sh` above.
 Run `configure.sh` after `bootstrap.sh`:
 
@@ -84,6 +78,59 @@ Run `configure.sh` after `bootstrap.sh`:
 
 Drives the real `vault`/`consul` CLIs against a port-forward instead of going over SSH
 through an ALB. Re-running is safe (each step checks before creating).
+
+## Service mesh: Vault as the CA, Vault and Postgres as mesh services
+
+Three things in `bootstrap.sh` / `configure.sh` shape the mesh beyond a stock Consul install.
+
+**Vault is the mesh (Connect) CA** (`configure.sh` step 8). Consul is installed before Vault
+exists, so it starts on its built-in CA; once Vault is unsealed, `configure.sh` writes a
+`consul-connect-ca` Vault policy, creates a periodic token for it, and runs
+`consul connect ca set-config` with the `vault` provider. Consul creates and populates the
+`connect_root` / `connect_inter` PKI mounts itself and cross-signs the new root, so running
+proxies keep working. Consul verifies Vault's TLS with the CA that `bootstrap.sh` puts in the
+`vault-ca` secret and the Helm values mount at `/consul/userconfig/vault-ca/ca.crt`. Check with
+`consul connect ca get-config | jq -r .Provider` (should print `vault`). Consul's own
+server-RPC TLS CA is separate and unaffected.
+
+**Vault and Postgres are mesh services** (`configure.sh` step 1b, before Postgres is deployed,
+because Vault's database secrets engine connects to Postgres through the mesh during
+`configure.sh`). `mesh-vault-postgres.yaml` holds their `ServiceDefaults` and
+`ServiceIntentions`; `deploy-k8s/mesh.yaml` carries `allowEnablingPermissiveMutualTLS`.
+
+- Both are `protocol: tcp`. The mesh-wide default is `http`, which would make Envoy try to
+  parse Postgres's wire protocol and Vault's TLS stream.
+- **Postgres** is strict mTLS. Allowed sources: `vault` (vault namespace), `keycloak`,
+  `user-mcp`, `litellm-gateway`.
+- **Vault** is `mutualTLSMode: permissive`, because the Consul servers (CA operations), the host
+  NodePort/port-forward and kubelet probes all reach it from outside the mesh. Mesh clients still
+  use mTLS and need an intention: `ai-agent`, `user-mcp`, `consul-mcp-authz`, `opa-service`,
+  `opa-mcp-authz`. A new Vault client with a sidecar needs adding there.
+- Consul requires the ServiceAccount name to equal the service name (ACLs on); the Vault chart
+  also creates `vault-internal` / `-active` / `-standby` / `-ui` Services on the same pod, so the
+  pod carries `consul.hashicorp.com/kubernetes-service: "vault"` to register only `vault`.
+- **`kubectl exec` needs `-c`.** Consul puts `consul-dataplane` first in each meshed pod, so an
+  exec without `-c` lands in a container with no shell. The scripts use `-c vault` /
+  `-c postgres`; do the same by hand.
+- `vault-0` shows `1/2` Ready until Vault is initialised and unsealed (the chart's readiness probe is
+  `vault status`); that is expected.
+- **Sealed Vault:** because Vault is also the CA, a restarted (sealed) Vault cannot get new leaf
+  certs issued until it is unsealed by hand. Leaf certs already issued keep working for their TTL.
+
+**LiteLLM identifies its callers by mesh identity, not a shared key.** The `litellm-gateway`
+`ServiceDefaults` in `mesh-timeouts.yaml` carries a `builtin/lua` Envoy extension that copies the
+verified mTLS peer's SPIFFE ID into `x-mesh-caller-spiffe` (removing any client-supplied copy first).
+`litellm-gateway/pdp_auth.py` admits only `default/ai-agent` and `default/web` on that basis;
+everything else (including `litellm-api-gateway`) falls through to LiteLLM's own auth. The header is
+only trustworthy while that extension is applied. See `../../documentation/Guia_Configuracao.md`.
+
+`make deploy` also deploys the OPA content PDP (`opa` namespace, `opa-server`, `opa-gov-api`) and points
+LiteLLM's guardrail at `http://opa-gov-api.virtual.consul:8000`; `make images` builds the `opa-gov-api` image
+locally because the Docker Hub one is amd64-only. It creates the `opa` namespace *before* applying
+`service-intentions.yaml`, which carries `opa-service`'s intention.
+
+`make deploy` waits for the `web-api-gateway`, `ciba-channel-gateway` and `litellm-api-gateway`
+Services (Consul creates them asynchronously) before patching their NodePorts.
 
 ## Deploying the demo apps
 

@@ -17,7 +17,6 @@ class Settings:
     model: str
     ollama_base_url: str | None
     litellm_base_url: str | None
-    litellm_api_key: str | None
     actor_token_path: Path
     token_exchange_url: str
     token_exchange_timeout_seconds: float
@@ -44,7 +43,6 @@ def load_settings() -> Settings:
         # provider:model string. Takes priority over the ollama_base_url
         # branch below when both are set.
         litellm_base_url=os.getenv("LITELLM_BASE_URL"),
-        litellm_api_key=os.getenv("LITELLM_API_KEY"),
         actor_token_path=Path(
             os.getenv("ACTOR_TOKEN_PATH", "/vault/secrets/actor-token")
         ),
