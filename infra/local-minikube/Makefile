@@ -15,14 +15,14 @@ REPO_ROOT    := ../..
 DEPLOY_DIR   := $(REPO_ROOT)/deploy-k8s
 KC           := kubectl --context $(PROFILE)
 
-.PHONY: up down status verify credentials bootstrap configure keycloak images deploy redeploy help
+.PHONY: up down status verify credentials bootstrap configure keycloak images deploy redeploy hop-logs help
 
 help:
 	@echo "make up        - full build (cluster, control plane, Keycloak, images, apps)"
 	@echo "make down      - destroy the minikube node"
 	@echo "make status    - pod status + direct-access check"
 	@echo "make redeploy  - re-apply manifests + local images only"
-	@echo "make bootstrap/configure/keycloak/images/deploy/verify/credentials - run one stage"
+	@echo "make hop-logs   - viewer ao vivo (kubectl logs --follow → http://127.0.0.1:8753/)"
 
 up: bootstrap configure keycloak images deploy verify credentials
 
@@ -72,6 +72,8 @@ deploy:
 	$(KC) create namespace opa --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/proxy-defaults.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/mesh.yaml
+	$(KC) apply -f mesh-vault-postgres.yaml || true
+	-./ensure-litellm-pep-vault-role.sh
 	$(KC) apply -f $(DEPLOY_DIR)/service-intentions.yaml || true
 	$(KC) create secret generic token-exchange-env --from-file=.env=$(DEPLOY_DIR)/token-exchange.env --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/token-exchange.yaml
@@ -81,17 +83,32 @@ deploy:
 	[ -f generated/litellm_sso_state ] || openssl rand -hex 24 > generated/litellm_sso_state
 	[ -f generated/keycloak_client_secret_litellm ] || { echo "missing generated/keycloak_client_secret_litellm (run make keycloak)"; exit 1; }
 	[ -f generated/litellm_db_password ] || { echo "missing generated/litellm_db_password (run make keycloak)"; exit 1; }
+	[ -f generated/keycloak_client_secret_ciba ] || { echo "missing generated/keycloak_client_secret_ciba (run make keycloak)"; exit 1; }
 	$(KC) create secret generic litellm-gateway-env \
 	  --from-literal=LITELLM_MASTER_KEY=$$(cat generated/litellm_master_key) \
 	  --from-literal=OPENAI_API_KEY=$${OPENAI_API_KEY:-} \
 	  --from-literal=GENERIC_CLIENT_SECRET=$$(cat generated/keycloak_client_secret_litellm) \
 	  --from-literal=GENERIC_CLIENT_STATE=$$(cat generated/litellm_sso_state) \
 	  --from-literal=DATABASE_URL=postgresql://litellm_user:$$(cat generated/litellm_db_password)@postgres.default.svc.cluster.local:5432/litellm \
+	  --from-literal=PEP_OPA_URL=http://opa-service.opa.svc.cluster.local \
+	  --from-literal=PEP_OPA_DECISION_PATH=/v1/data/mcp/pep/decision \
+	  --from-literal=PEP_CIBA_KEYCLOAK_URL=http://keycloak.virtual.consul \
+	  --from-literal=PEP_CIBA_REALM=demo \
+	  --from-literal=PEP_CIBA_CLIENT_ID=ciba-client \
+	  --from-literal=PEP_CIBA_CLIENT_SECRET=$$(cat generated/keycloak_client_secret_ciba) \
+	  --from-literal=PEP_CIBA_POLL_TIMEOUT_SECONDS=110 \
+	  --from-literal=PEP_CIBA_APPROVE_URL=http://localhost:8093 \
+	  --from-literal=PEP_MCP_SOURCE=default/litellm-gateway \
+	  --from-literal=PEP_MCP_DEST=default/user-mcp \
+	  --from-literal=PEP_MCP_AUDIENCE=user-mcp \
+	  --from-literal=PEP_MCP_ISSUER=http://localhost:8081/realms/demo \
+	  --from-literal=PEP_KEYCLOAK_JWKS_URL=http://keycloak.virtual.consul/realms/demo/protocol/openid-connect/certs \
 	  --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) create configmap litellm-gateway-config \
 	  --from-file=config.yaml=$(REPO_ROOT)/litellm-gateway/config.yaml \
 	  --from-file=pdp_auth.py=$(REPO_ROOT)/litellm-gateway/pdp_auth.py \
 	  --from-file=pdp_guardrail.py=$(REPO_ROOT)/litellm-gateway/pdp_guardrail.py \
+	  --from-file=pdp_mcp.py=$(REPO_ROOT)/litellm-gateway/pdp_mcp.py \
 	  --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/litellm-gateway.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/litellm-gateway-gateway.yaml
@@ -108,9 +125,8 @@ deploy:
 	$(KC) apply -f $(DEPLOY_DIR)/ciba-channel.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/service-defaults-ciba-channel.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/ciba-channel-gateway.yaml
-	# OPA ext-authz filter for user-mcp: must be deployed before user-mcp is
-	# reachable (failureModeAllow=false in service-defaults-user-mcp.yaml means
-	# Envoy blocks every request when the gRPC authz service is absent).
+	# Catalog is now enforced by LiteLLM (pdp_mcp.py). opa-mcp-authz stays
+	# deployed so consul-mcp-authz can still manage the Vault KV catalog.
 	$(KC) create configmap opa-mcp-authz-policy \
 	  --from-file=mcp_authz.rego=$(REPO_ROOT)/opa-mcp-auth/policy/mcp/authz/mcp_authz.rego \
 	  --dry-run=client -o yaml | $(KC) apply -f -
@@ -179,5 +195,16 @@ verify:
 
 credentials:
 	./print-credentials.sh
+
+hop-logs:
+	@-lsof -tiTCP:8753 -sTCP:LISTEN | xargs kill -9 >/dev/null 2>&1 || true
+	@sleep 0.3
+	cd $(REPO_ROOT)/vault-log && python3 serve.py >/tmp/vault-log-serve.out 2>&1 &
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+	  curl -sf http://127.0.0.1:8753/health >/dev/null && break; \
+	  sleep 0.4; \
+	done
+	@echo "hop viewer ao vivo: http://127.0.0.1:8753/"
+	-open http://127.0.0.1:8753/
 
 status: verify

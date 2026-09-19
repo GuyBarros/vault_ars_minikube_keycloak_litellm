@@ -22,15 +22,16 @@ def build_repository(settings: Settings) -> UserRepository:
             verify_tls=settings.vault_verify_tls,
             timeout_seconds=settings.vault_request_timeout_seconds,
         )
-        ciba_client = CibaClient(
-            keycloak_url=settings.ciba_keycloak_url,
-            realm=settings.ciba_realm,
-            client_id=settings.ciba_client_id,
-            client_secret=settings.ciba_client_secret,
-            poll_timeout_seconds=settings.ciba_poll_timeout_seconds,
-            approve_url=settings.ciba_approve_url,
-            actor_token_path=settings.actor_token_path,
-        )
+        if settings.pep_mode != "runtime":
+            ciba_client = CibaClient(
+                keycloak_url=settings.ciba_keycloak_url,
+                realm=settings.ciba_realm,
+                client_id=settings.ciba_client_id,
+                client_secret=settings.ciba_client_secret,
+                poll_timeout_seconds=settings.ciba_poll_timeout_seconds,
+                approve_url=settings.ciba_approve_url,
+                actor_token_path=settings.actor_token_path,
+            )
 
     return PostgresUserRepository(
         pg_url=settings.pg_url,

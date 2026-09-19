@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable
 import jwt
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from auth.context import bind_request_identity, reset_request_identity
+from auth.context import bind_request_identity, bind_pep_assurance, reset_request_identity, reset_pep_assurance
 from errors import AppError
 from logging_utils import bind_log_context, log_event, reset_log_context
 
@@ -94,6 +94,29 @@ class JwtValidator:
         return claims
 
 
+def decode_unverified(token: str) -> dict[str, Any]:
+    """Decode a JWT without signature / aud / iss / exp checks.
+
+    Used when USER_MCP_PEP_MODE=runtime: LiteLLM already enforced those
+    checks and may have replaced the inbound OBO with a CIBA JWT.
+    """
+    try:
+        claims = jwt.decode(
+            token,
+            options={
+                "verify_signature": False,
+                "verify_aud": False,
+                "verify_exp": False,
+                "verify_iss": False,
+            },
+        )
+    except jwt.DecodeError as exc:
+        raise AppError(401, "invalid_token", f"Malformed token: {exc}") from exc
+    if not isinstance(claims, dict):
+        raise AppError(401, "invalid_token", "Token payload is not an object.")
+    return claims
+
+
 def extract_identity(claims: dict[str, Any]) -> dict[str, Any]:
     """Pull the fields we care about for downstream logging / authorization."""
     scope_claim = claims.get("scope")
@@ -132,15 +155,18 @@ class JwtAuthMiddleware:
         bypass_auth: bool,
         logger: logging.Logger,
         allow_unauth_discovery: bool = False,
+        trust_gateway: bool = False,
     ):
         self._app = app
         self._validator = validator
         self._bypass_auth = bypass_auth
         self._allow_unauth_discovery = allow_unauth_discovery
+        self._trust_gateway = trust_gateway
         self._logger = logger
-        if not bypass_auth and validator is None:
+        if not bypass_auth and not trust_gateway and validator is None:
             raise ValueError(
-                "JwtValidator is required when bypass_auth is False."
+                "JwtValidator is required when bypass_auth is False and "
+                "trust_gateway is False."
             )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
@@ -162,7 +188,10 @@ class JwtAuthMiddleware:
 
         try:
             token = _extract_bearer(scope)
-            claims = self._validator.validate(token)
+            if self._trust_gateway:
+                claims = decode_unverified(token)
+            else:
+                claims = self._validator.validate(token)
         except AppError as exc:
             # Allow unauthenticated discovery requests through with an anonymous
             # identity when the operator opts in. Real tools/call invocations
@@ -204,6 +233,15 @@ class JwtAuthMiddleware:
         scope_state = scope.setdefault("state", {})
         scope_state["jwt_claims"] = identity
         scope_state["jwt_token"] = token
+        log_event(
+            self._logger,
+            "jwt_identity_bound",
+            message="Inbound JWT bound",
+            request_id=request_id,
+            preferred_username=identity.get("preferred_username"),
+            agent_id=identity.get("agent_id"),
+            pep_mode="runtime" if self._trust_gateway else "local",
+        )
         await self._dispatch_with_context(
             scope, receive, send, identity, request_id, raw_token=token
         )
@@ -229,10 +267,12 @@ class JwtAuthMiddleware:
             user=identity.get("preferred_username"),
             groups=identity.get("groups"),
         )
+        pep_token = bind_pep_assurance(_pep_assurance_from_scope(scope))
         try:
             wrapped_send = _build_request_id_send(send, request_id)
             await self._app(scope, receive, wrapped_send)
         finally:
+            reset_pep_assurance(pep_token)
             reset_request_identity(identity_tokens)
             reset_log_context(log_token)
 
@@ -247,6 +287,38 @@ def _extract_bearer(scope: Scope) -> str:
     if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
         raise AppError(401, "invalid_request", "Authorization header must use Bearer scheme.")
     return parts[1].strip()
+
+
+def _pep_assurance_from_scope(scope: Scope) -> dict | None:
+    headers = dict(scope.get("headers") or [])
+    decision = _header_str(headers, b"x-pep-decision")
+    if not decision:
+        return None
+    current_loa = _header_int(headers, b"x-pep-loa")
+    required_loa = _header_int(headers, b"x-pep-required-loa")
+    return {
+        "decision": decision,
+        "current_loa": current_loa if current_loa is not None else 1,
+        "required_loa": required_loa if required_loa is not None else current_loa or 1,
+    }
+
+
+def _header_str(headers: dict[bytes, bytes], name: bytes) -> str | None:
+    raw = headers.get(name)
+    if raw is None:
+        return None
+    value = raw.decode("latin-1").strip()
+    return value or None
+
+
+def _header_int(headers: dict[bytes, bytes], name: bytes) -> int | None:
+    raw = _header_str(headers, name)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _resolve_request_id(scope: Scope) -> str:

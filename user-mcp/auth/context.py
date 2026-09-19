@@ -16,6 +16,9 @@ current_obo_user: ContextVar[Optional[str]] = ContextVar(
 current_obo_groups: ContextVar[Optional[list[str]]] = ContextVar(
     "current_obo_groups", default=None
 )
+current_pep_assurance: ContextVar[Optional[dict]] = ContextVar(
+    "current_pep_assurance", default=None
+)
 
 
 def bind_request_identity(
@@ -30,6 +33,14 @@ def bind_request_identity(
         current_obo_user.set(user),
         current_obo_groups.set(groups),
     )
+
+
+def bind_pep_assurance(value: dict | None) -> Token[Any]:
+    return current_pep_assurance.set(value)
+
+
+def reset_pep_assurance(token: Token[Any]) -> None:
+    current_pep_assurance.reset(token)
 
 
 def reset_request_identity(

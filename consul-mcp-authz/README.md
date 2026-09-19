@@ -1,7 +1,10 @@
 # consul-mcp-authz
 
-Operator-facing layer for managing the data-driven MCP authorization
-catalog that [`opa-mcp-auth/`](../opa-mcp-auth) reads at runtime.
+Operator-facing layer for managing the MCP authorization catalog in Vault KV (`opa-policies/mcp-authz/catalog`).
+
+No laboratório o **enforce** do catálogo é LiteLLM → opa-server `mcp.pep`, não ext_authz no `user-mcp`. Gravar uma regra aqui ainda vale: o vault-agent + OPA `--watch` recarregam `data.rules` e o próximo `tools/call` já vê a lista nova.
+
+Arquitetura: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md). Companion spec: [`MCP-AUTHZ-SPEC.md`](./MCP-AUTHZ-SPEC.md).
 
 This project houses **two workloads**:
 
@@ -9,8 +12,6 @@ This project houses **two workloads**:
 |--------|----------|-------|--------|
 | [`api/`](./api) | `consul-mcp-authz` — FastAPI REST service over the Vault KV v2 catalog | P1 | built (no auth yet) |
 | [`ui/`](./ui)   | Next.js operator console — runs in the **same container** as the API (one image, one Pod) | P2 | pilot built: Rules list, View/Edit, New Rule, History + rollback, Agents / MCP Servers browse, MCP Server detail |
-
-Companion docs: [`MCP-AUTHZ-SPEC.md`](./MCP-AUTHZ-SPEC.md).
 
 ## Pending implementation
 

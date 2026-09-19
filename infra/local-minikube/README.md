@@ -1,6 +1,6 @@
 # Local minikube (no AWS)
 
-Guia de configuração (env, Keycloak, Vault CIBA, LiteLLM): [`../../documentation/Guia_Configuracao.md`](../../documentation/Guia_Configuracao.md).
+Guia de configuração (env, Keycloak, Vault CIBA, LiteLLM): [`../../documentation/Guia_Configuracao.md`](../../documentation/Guia_Configuracao.md). Arquitetura: [`../../documentation/arquitetura-detalhada.md`](../../documentation/arquitetura-detalhada.md).
 
 ## Quickest path
 
@@ -14,6 +14,7 @@ make down    # destroy the minikube node - wipes everything
 `images`, `deploy`, `verify` - each also runnable on its own, e.g. `make bootstrap`).
 `make redeploy` re-applies just the app manifests + local images, for iterating on
 app source or `deploy-k8s/*.yaml` without redoing the cluster or control plane.
+`make hop-logs` sobe o viewer SSE em http://127.0.0.1:8753/.
 The rest of this file explains what each stage actually does; read on if something
 needs debugging or you're doing it by hand.
 
@@ -40,10 +41,7 @@ values templates (`modules/minikube-allinone/templates/*.tftpl`, rendered with
 ./bootstrap.sh
 ```
 
-Uses a dedicated minikube profile (`local-minikube-demo`, podman driver — this
-machine's `docker` CLI is a shim in front of Podman) so it doesn't touch any other
-local minikube profile. Generated TLS material, tokens, and rendered values land in
-`./generated/` (git-ignored).
+Uses a dedicated minikube profile (`local-minikube-demo`, **docker** driver — Colima neste Mac). Não use `host.containers.internal` (só Podman). O alias do host para pods é `host.minikube.internal` / `host.docker.internal`. Generated TLS material, tokens, and rendered values land in `./generated/` (git-ignored).
 
 ```bash
 kubectl --context local-minikube-demo get pods -A
@@ -180,17 +178,13 @@ only read by the unused `file` storage backend — this deploy uses
 `deploy-k8s/ai-agent.env` (git-ignored, per-machine):
 
 ```bash
-LANGCHAIN_MODEL=ollama:qwen2.5:7b
-OLLAMA_BASE_URL=http://host.containers.internal:11434
+LANGCHAIN_MODEL=openai:qwen-local
+LITELLM_BASE_URL=http://litellm-gateway.virtual.consul:4000
+OLLAMA_BASE_URL=http://host.minikube.internal:11434
+USER_MCP_URL=http://litellm-gateway.virtual.consul:4000/user_mcp/mcp
 ```
 
-`host.containers.internal` is Podman's name for this Mac from inside the
-minikube node — confirmed reachable from a pod with `kubectl --context
-local-minikube-demo run nettest --image=busybox --rm -it --restart=Never --
-wget -qO- http://host.containers.internal:11434/api/tags`. Pull the model on
-the host first (`ollama pull qwen2.5:7b`) — the agent doesn't do this itself.
-`langchain-ollama` is a real dependency (`ai-agent/pyproject.toml`), so rebuild
-the image (`make images`) after changing the model.
+Ollama no host tem de escutar `0.0.0.0:11434` (LaunchAgent `local.ollama`). `brew services start ollama` bind em `127.0.0.1` e os pods não alcançam. `host.containers.internal` é só Podman. Pull: `ollama pull qwen2.5:7b`.
 
 **No port-forward needed for the web app either**, but it takes one more step than
 Vault/Consul: `deploy-k8s/service-intentions.yaml` only allows the `web-api-gateway`

@@ -12,6 +12,7 @@ from auth.context import (
     current_obo_scope,
     current_obo_token,
     current_obo_user,
+    current_pep_assurance,
 )
 from ciba_client import CibaClient
 from errors import AppError
@@ -292,6 +293,20 @@ class PostgresUserRepository(UserRepository):
         requires a human to approve first (see loa.py for the PDP_Decision
         audit-log vocabulary this emits)."""
         assert self._vault is not None
+        if self._ciba is None:
+            # Runtime mode: LiteLLM already probed Vault and completed CIBA.
+            pep = current_pep_assurance.get(None) or {}
+            current_loa = int(pep.get("current_loa") or LOA_BASELINE)
+            required_loa = int(pep.get("required_loa") or current_loa)
+            _last_assurance.set(
+                {
+                    "tool": action,
+                    "decision": pep.get("decision") or ALLOW,
+                    "current_loa": current_loa,
+                    "required_loa": required_loa,
+                }
+            )
+            return obo_token
         parent = await self._vault.login_with_jwt(obo_token, jwt_role)
         need = await self._vault.ciba_required_by_policy(parent, action=action, user=user)
         if not need:

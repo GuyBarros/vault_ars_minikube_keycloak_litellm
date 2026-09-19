@@ -24,6 +24,14 @@ def _build_validator(settings) -> JwtValidator | None:
         )
         return None
 
+    if settings.pep_mode == "runtime":
+        log_event(
+            LOGGER,
+            "jwt_validation_trust_gateway",
+            message="USER_MCP_PEP_MODE=runtime: trusting LiteLLM PEP, skipping JWKS.",
+        )
+        return None
+
     jwks_url = settings.effective_jwks_url
     issuer = settings.effective_issuer
     if not jwks_url or not issuer or not settings.audience:
@@ -55,6 +63,7 @@ app = JwtAuthMiddleware(
     bypass_auth=SETTINGS.bypass_auth,
     logger=logging.getLogger("user_mcp.auth"),
     allow_unauth_discovery=SETTINGS.allow_unauth_discovery,
+    trust_gateway=SETTINGS.pep_mode == "runtime",
 )
 
 

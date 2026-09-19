@@ -125,3 +125,43 @@ async def test_write_tool_result_carries_elevated_assurance_after_ciba(monkeypat
         "required_loa": 2,
     }
     assert result.structured_content["email"] == "new@example.com"
+
+
+async def test_runtime_mode_skips_ciba_and_uses_pep_headers(monkeypatch):
+    from auth.context import bind_pep_assurance, reset_pep_assurance
+
+    repo = PostgresUserRepository(
+        pg_url="postgresql://example/db",
+        auth_mode="vault",
+        vault_client=FakeVaultClient(ciba_required=True),
+        vault_jwt_read_role="user-mcp-oidc-read",
+        vault_jwt_write_role="user-mcp-oidc-write",
+        vault_db_read_path="database/creds/user-mcp-read-role",
+        vault_db_write_path="database/creds/user-mcp-write-role",
+        ciba_client=None,
+    )
+    monkeypatch.setattr(
+        postgres_repo_module.asyncpg, "connect", AsyncMock(return_value=FakeConnection([_row()]))
+    )
+    mcp = FastMCP(name="assurance-runtime")
+    register_tools(mcp, repo)
+    tokens = bind_request_identity(token="ciba-from-gateway", scope="users.write", user="admin", groups=["admin"])
+    pep = bind_pep_assurance(
+        {"decision": "ALLOW", "current_loa": 2, "required_loa": 2}
+    )
+    try:
+        async with Client(mcp) as client:
+            result = await client.call_tool(
+                "create_user",
+                {"user": {"email": "a@example.com", "first_name": "A", "last_name": "B"}},
+            )
+    finally:
+        reset_pep_assurance(pep)
+        reset_request_identity(tokens)
+
+    assert result.meta["assurance"] == {
+        "tool": "create_user",
+        "decision": "ALLOW",
+        "current_loa": 2,
+        "required_loa": 2,
+    }

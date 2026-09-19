@@ -1,14 +1,22 @@
+# opa-mcp-auth — catálogo MCP (enforce no lab é LiteLLM + opa-server)
+
+O documento Vault KV `opa-policies/mcp-authz/catalog` continua a fonte do allow-list. No `make up` quem **consulta** no hop `tools/call` é o **opa-server** (`mcp.pep`, `data.rules`), via LiteLLM `pdp_mcp.py`. O sidecar `ext_authz` de `user-mcp` está **desligado**.
+
+Este diretório ainda importa porque: (1) `vault/seed-catalog.sh` / `configure.sh` semeiam o KV; (2) o Deployment `opa-mcp-authz` fica no ar para o `consul-mcp-authz` gravar o catálogo com hot-reload. O Rego `mcp_authz.rego` (gRPC ext_authz) **não** está no caminho do lab.
+
+Arquitetura: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
+
+---
+
 # opa-mcp-auth — Data-driven MCP authorization pilot
+
 
 Pilot that moves the `mcp.authz` policy from a hardcoded Rego catalog
 loaded by ConfigMap to a **data-driven** policy whose rule set lives in
 Vault KV v2 and is hot-reloaded into OPA by a Vault Agent sidecar — no
 pod restart on rule changes.
 
-Apply this directory together with `deploy-k8s/opa-mcp-authz.yaml` and
-the user-mcp ext_authz wiring (`deploy-k8s/service-defaults-user-mcp.yaml`
-plus the `user-mcp` block in `deploy-k8s/service-intentions.yaml`) to
-exercise the runtime-reload backbone end-to-end.
+O Deployment `opa-mcp-authz` ainda sobe no `make deploy` (hot-reload do catálogo para o consul-mcp-authz). **Não** aplique ext_authz em `service-defaults-user-mcp.yaml` no lab minikube.
 
 ## How it works
 

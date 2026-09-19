@@ -69,13 +69,18 @@ HELM() { helm --kube-context "$PROFILE" "$@"; }
 
 echo "=== 1. minikube ($PROFILE) ==="
 if ! minikube status -p "$PROFILE" >/dev/null 2>&1; then
-  # AWS bootstrap.sh.tftpl uses --driver=docker (a real Docker install on the
-  # EC2 AMI). This machine's "docker" CLI is a compatibility shim in front of
-  # Podman (podman machine list / docker version show a Podman server), so
-  # minikube's Docker-version preflight rejects it — use the podman driver
-  # instead, matching every other local minikube profile on this machine.
+  # Prefer a real Docker engine (Colima / Docker Desktop). Fall back to
+  # Podman when `docker` is only a Podman shim (minikube's Docker preflight
+  # rejects that).
+  DRIVER=docker
+  if ! docker info >/dev/null 2>&1; then
+    DRIVER=podman
+  elif docker version -f '{{.Server.Platform.Name}}' 2>/dev/null | grep -qi podman; then
+    DRIVER=podman
+  fi
+  echo "minikube driver: $DRIVER"
   minikube start -p "$PROFILE" \
-    --driver=podman \
+    --driver="$DRIVER" \
     --cpus="$MINIKUBE_CPUS" \
     --memory="$MINIKUBE_MEMORY" \
     --kubernetes-version="$K8S_VERSION" \
@@ -123,6 +128,8 @@ KC -n "$CONSUL_NAMESPACE" create secret generic consul-bootstrap-token \
   --from-literal=token="$(cat "$GEN_DIR/consul_token")" --dry-run=client -o yaml | KC apply -f -
 KC -n "$CONSUL_NAMESPACE" create secret generic vault-ca \
   --from-file=ca.crt="$GEN_DIR/ca.crt" --dry-run=client -o yaml | KC apply -f -
+helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
+helm repo update hashicorp >/dev/null
 HELM upgrade --install consul hashicorp/consul \
   --namespace "$CONSUL_NAMESPACE" \
   --version "$CONSUL_CHART_VERSION" \

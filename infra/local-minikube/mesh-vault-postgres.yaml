@@ -73,7 +73,10 @@ spec:
       namespace: default
     - name: opa-service
       action: allow
-      namespace: default
+      namespace: opa
     - name: opa-mcp-authz
+      action: allow
+      namespace: default
+    - name: litellm-gateway
       action: allow
       namespace: default

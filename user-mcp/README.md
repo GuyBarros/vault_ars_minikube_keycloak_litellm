@@ -1,6 +1,6 @@
 # User MCP
 
-This service is a FastMCP-based Model Context Protocol server that exposes user-management tools (`list_all_users`, `search_users_by_first_name`, `create_user`, `delete_user_by_email`, `update_user_by_email`) over **streamable HTTP**. It is consumed by [`ai-agent`](../ai-agent/) via [`langchain-mcp-adapters`](https://github.com/langchain-ai/langchain-mcp-adapters), which forwards the OBO bearer token issued by `token-exchange`. Every `tools/call` is authenticated by validating the OBO JWT against Keycloak's JWKS — signature, audience, issuer, and expiry are all enforced before any tool runs — *and* re-checked against the tool's declared scope contract. The data layer is pluggable: a `file` backend serves the in-memory JSON list (dev) and a `postgres` backend uses asyncpg against PostgreSQL 16. In the postgres backend, database credentials are issued **per request** by HashiCorp Vault — the OBO token is exchanged at Vault's JWT auth method for short-lived Postgres credentials whose privilege level (read-only vs read/write) is bound to the OBO's scope.
+This service is a FastMCP-based Model Context Protocol server that exposes user-management tools (`list_all_users`, `search_users_by_first_name`, `create_user`, `delete_user_by_email`, `update_user_by_email`) over **streamable HTTP**. In the mesh lab, [`ai-agent`](../ai-agent/) talks MCP to LiteLLM (`/user_mcp/mcp`); LiteLLM is the PEP (JWT, catalog, scope, CIBA) and this process is the **runtime** (`USER_MCP_PEP_MODE=runtime`): it extracts the inbound bearer without JWKS, skips scope/CIBA, and still presents the JWT to Vault as `X-Vault-Token` for `database/creds` and Transform. Set `USER_MCP_PEP_MODE=local` to run this server as the PEP again (JWKS + `scope_check` + CIBA probe).
 
 ### Tool → scope contract
 
@@ -13,22 +13,11 @@ source of truth in `tools/users.py` (`TOOL_SCOPE_REQUIREMENTS`):
 | `list_all_users`, `search_users_by_first_name` | `users.read` |
 | `create_user`, `update_user_by_email`, `delete_user_by_email` | `users.write` |
 
-`auth/scope_check.py` consumes the same registry. Inside the dispatcher,
-`_run_tool` calls `require_scopes(tool_name)` against the OBO's `scope` claim
-(bound to a `ContextVar` by `JwtAuthMiddleware`) before any storage call is
-made. A token without the required scope is rejected with `403
-insufficient_scope` even if it passes JWT validation. Tools that have not been
-registered with `register_tool_scopes` are denied by default.
+`_run_tool` chama `require_scopes` **só em `USER_MCP_PEP_MODE=local`**. No lab (`runtime`) o ALLOW/DENY de scope é o LiteLLM + OPA `mcp.pep`; este servidor só declara `_meta.required_scopes` para o agente montar o OBO.
 
 ### Unauthenticated discovery
 
-`USER_MCP_ALLOW_UNAUTH_DISCOVERY=true` lets `tools/list` requests through with
-no `Authorization` header. The middleware dispatches them with an anonymous
-identity (empty scope), so any `tools/call` still fails the scope check —
-discovery is the only thing that succeeds. This is intended for the
-service-mesh deployment where `ai-agent` discovers the catalog once at
-startup over a channel secured by Consul service-intentions. Leave it `false`
-in any environment where the network is open.
+`USER_MCP_ALLOW_UNAUTH_DISCOVERY=true` lets `tools/list` through with no `Authorization` header (anonymous identity). No lab o ALLOW/DENY de `tools/call` é o LiteLLM (`pdp_mcp`); discovery sem Bearer continua necessário para o agente no startup. Leave it `false` if the network is open.
 
 ## Current project structure
 
@@ -42,7 +31,7 @@ user-mcp/
 ├── models.py                 # UserRecord (pydantic, extra=allow)
 ├── auth/
 │   ├── context.py            # ContextVars carrying the active OBO token + scope
-│   └── jwt_validator.py      # PyJWT + PyJWKClient + ASGI JwtAuthMiddleware
+│   └── jwt_validator.py      # runtime: decode unverified; local: PyJWT + JWKS
 ├── vault_client.py           # httpx-based Vault client (JWT login + DB creds)
 ├── tools/
 │   └── users.py              # @mcp.tool() definitions, async wrappers around repo
@@ -69,16 +58,16 @@ The application exposes a single MCP endpoint over streamable HTTP:
 
 - `POST {USER_MCP_PATH}` — JSON-RPC over streamable HTTP (default path `/mcp`).
 
-High-level request flow:
+High-level request flow (`USER_MCP_PEP_MODE=runtime`, o `make up`):
 
-1. The Starlette ASGI app receives a streamable-HTTP POST.
-2. `JwtAuthMiddleware` extracts the `Authorization: Bearer …` header. The OBO JWT is validated against Keycloak's JWKS (signature, `aud`, `iss`, `exp`, `iat`) using `PyJWKClient` with a configurable cache TTL.
-3. Validated identity (`preferred_username`, `agent_id`, `scope`, `sub`) is attached to the request scope and bound into the structured-logging context (so every log line is prefixed with `[user=<preferred_username> agent=<agent_id>]`). The raw OBO token and scope are also bound into request-scoped `ContextVar`s so the storage layer can use them.
-4. The FastMCP server dispatches the JSON-RPC call to the appropriate tool.
-5. The tool delegates to the configured `UserRepository`. In the Postgres + Vault mode the repo authenticates to Vault with the OBO and obtains scope-appropriate dynamic Postgres credentials before opening a fresh asyncpg connection, then closes it once the query completes.
-6. Application errors raised by the repo layer are translated to FastMCP `ToolError` with stable codes (400 `invalid_request`, 404 `invalid_request`, 500 `agent_error`, 502 `agent_error` for Vault/DB transport failures).
+1. The Starlette ASGI app receives a streamable-HTTP POST (from LiteLLM, not from the agent).
+2. `JwtAuthMiddleware` extracts `Authorization: Bearer …` and **decodes without JWKS** (`jwt_identity_bound`). LiteLLM already validated the token and completed CIBA if required.
+3. Identity is bound into logging `ContextVar`s so `database/creds` / Transform still see `preferred_username`, `scope`, `groups`.
+4. The FastMCP server dispatches the JSON-RPC call. Scope and CIBA checks are skipped.
+5. The tool delegates to `UserRepository`. In Postgres + Vault mode the repo presents the inbound JWT as `X-Vault-Token` and mints dynamic Postgres credentials, then closes the connection.
+6. Application errors become FastMCP `ToolError`.
 
-If the OBO JWT is missing or invalid the middleware short-circuits with a JSON 401 (`invalid_request`, `invalid_token`, `expired_token`, `invalid_audience`, `invalid_issuer`) — the tool layer is never reached.
+`USER_MCP_PEP_MODE=local` restores JWKS + `require_scopes` + Vault CIBA probe in this process (not the lab path). See [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
 
 ## Available tools
 
@@ -94,18 +83,9 @@ If the OBO JWT is missing or invalid the middleware short-circuits with a JSON 4
 
 ### CIBA gate on writes
 
-Whether a write blocks on human approval is a Vault ACL policy decision, not
-a code path: every write first probes `sys/capabilities-self` on
-`ciba/<action>/<user>` (see `infra/local-minikube/keycloak.sh`'s
-`ciba-list-users`/`ciba-write` policies). If the policy says `deny`, the
-write proceeds silently on the caller's own OBO token. If it says `read`,
-`user-mcp` starts Keycloak CIBA (`ciba_client.py`) with the caller as
-`login_hint` and blocks until the human approves, denies, or the poll window
-elapses (`USER_MCP_CIBA_POLL_TIMEOUT_SECONDS`, default 110s) — approval
-happens at `USER_MCP_CIBA_APPROVE_URL` (the `ciba-channel` service), not in
-the tool call itself. This runs *after* the existing `users.write` scope
-check — both must pass. See [`KEYCLOAK_REALM_SETUP.md`](../KEYCLOAK_REALM_SETUP.md)
-for setup.
+**Lab (`USER_MCP_PEP_MODE=runtime`):** LiteLLM + OPA `ciba_tools` (`create_user`, `delete_user_by_email`). This process does not poll Keycloak.
+
+**`USER_MCP_PEP_MODE=local`:** every write probes Vault `sys/capabilities-self` on `ciba/<action>/<user>` (`ciba-list-users` / `ciba-write` in `keycloak.sh`). `deny` → OBO silencioso; `read` → `ciba_client.py` until Approve em `USER_MCP_CIBA_APPROVE_URL`. See [`KEYCLOAK_REALM_SETUP.md`](../KEYCLOAK_REALM_SETUP.md).
 
 ## Storage backends
 
@@ -125,8 +105,8 @@ Selected by `USER_MCP_DB_AUTH_MODE`:
 
 When `USER_MCP_DB_AUTH_MODE=vault`, the storage layer:
 
-1. **Probes the CIBA switch** — `POST {VAULT_ADDR}/v1/auth/{USER_MCP_VAULT_JWT_PATH}/login` with `{"role": <jwt-role>, "jwt": <OBO>}` to get a Vault client token, then `sys/capabilities-self` on `ciba/<action>/<user>`. `deny` → proceed silently; `read` → start Keycloak CIBA and block for approval (see "CIBA gate on writes" above).
-2. **Reads DB creds** — `GET {VAULT_ADDR}/v1/{<db-creds-path>}` with the Keycloak OBO (or CIBA-approved) JWT presented directly as `X-Vault-Token`. Vault 2.1's OAuth Resource Server validates it inline (issuer, signature, audience, plus the human ACL intersected with the `ai-agent` Agent Registry ceiling), calls Postgres as its admin user, runs the role's `creation_statements`, and returns a unique `username` / `password` with a TTL. The lease is revoked when the tool call finishes.
+1. **Runtime (lab):** skip CIBA probe. **Local:** probe `ciba/<action>/<user>` then maybe poll Keycloak (see above).
+2. **Reads DB creds** — `GET {VAULT_ADDR}/v1/{<db-creds-path>}` with the inbound JWT as `X-Vault-Token`. Vault OAuth Resource Server validates it, returns unique `username` / `password`. The lease is revoked when the tool call finishes.
 
 The repo then opens `asyncpg.connect(USER_MCP_PG_URL, user=…, password=…)`, runs the SQL, and closes the connection.
 

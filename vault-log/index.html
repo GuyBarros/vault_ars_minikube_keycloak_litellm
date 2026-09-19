@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vault Agent &mdash; Timeline de Logs</title>
+  <title>Fluxo PEP / hops</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=20260919b" />
 </head>
 <body>
   <header class="app-header">
@@ -19,8 +19,8 @@
         </svg>
       </div>
       <div class="brand-text">
-        <h1>Vault Agent Timeline</h1>
-        <p>Auditoria visual de troca de tokens OBO e chamadas de ferramentas com escopo</p>
+        <h1>Fluxo PEP / hops</h1>
+        <p>Stream ao vivo — hops, timeline e auditoria atualizam juntos. Cada hop mostra o enforce do PEP e a política do PDP.</p>
       </div>
     </div>
     <div class="header-actions">
@@ -29,16 +29,18 @@
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
         <span class="toggle-label">Mascarar dados sensíveis</span>
       </label>
+      <span class="live-pill wait" id="liveStatus">ligando stream…</span>
       <button class="btn btn-ghost btn-danger" id="clearBtn" hidden>Limpar</button>
-      <button class="btn btn-ghost" id="loadBtn">Carregar logs</button>
+      <button class="btn btn-ghost" id="loadBtn">Carregar arquivo</button>
     </div>
   </header>
 
   <section class="stats" id="stats"></section>
 
   <nav class="view-tabs" id="viewTabs">
-    <button class="view-tab active" data-view="timeline">Timeline por requisição</button>
-    <button class="view-tab" data-view="vault">Auditoria de acessos ao Vault</button>
+    <button class="view-tab active" data-view="hops">Fluxo / hops</button>
+    <button class="view-tab" data-view="timeline">Timeline por requisição</button>
+    <button class="view-tab" data-view="vault">Auditoria Vault / OBO</button>
   </nav>
 
   <section class="controls">
@@ -65,7 +67,7 @@
         <h2>Carregar logs do Vault Agent</h2>
         <button class="icon-btn" id="closeModal" aria-label="Fechar">&times;</button>
       </div>
-      <p class="modal-sub">Cole linhas de log (JSON estruturado, <code>INFO:</code> access logs) ou selecione arquivos <code>.txt</code>/<code>.log</code>/<code>.jsonl</code>/<code>.rtf</code>. Use <b>Adicionar</b> para correlacionar múltiplas fontes pelo <code>request_id</code> (end-to-end).</p>
+      <p class="modal-sub">O viewer já segue os pods em <code>/stream</code>. Isto é só para colar um arquivo antigo.</p>
       <textarea id="logInput" spellcheck="false" placeholder='2026-06-15T20:41:28.508705284Z {"event": "agent_request_started", ...}'></textarea>
       <div class="modal-actions">
         <label class="btn btn-ghost file-btn">
@@ -81,6 +83,6 @@
   </div>
 
   <script src="logs-data.js"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=20260919b"></script>
 </body>
 </html>

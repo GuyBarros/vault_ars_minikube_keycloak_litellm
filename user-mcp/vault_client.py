@@ -175,9 +175,10 @@ class VaultClient:
         log_event(
             LOGGER,
             "vault_db_creds_issued",
-            level=logging.DEBUG,
+            level=logging.INFO,
             message="Vault issued dynamic DB credentials",
             creds_path=path,
+            lease_id=body.get("lease_id"),
             lease_duration=body.get("lease_duration"),
         )
         return DynamicDbCredentials(
@@ -226,6 +227,14 @@ class VaultClient:
                 "agent_error",
                 "Vault transform encode response missing encoded_value.",
             )
+        log_event(
+            LOGGER,
+            "transform_encode",
+            level=logging.INFO,
+            message="Vault Transform encoded a field",
+            role_name=role_name,
+            transformation=transformation,
+        )
         return encoded_value
 
     async def revoke_lease(self, client_token: str, lease_id: str) -> None:

@@ -136,6 +136,84 @@ const EVENT_META = {
     title: "Logout (web app)",
     icon: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
   },
+  pdp_decision: {
+    color: "var(--c-obo)",
+    tag: "PEP",
+    title: "Decisão do PEP",
+    icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  },
+  ciba_started: {
+    color: "var(--c-broker)",
+    tag: "CIBA",
+    title: "CIBA iniciado — espera Approve",
+    icon: "M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
+  },
+  ciba_approved: {
+    color: "var(--c-obo)",
+    tag: "CIBA LoA2",
+    title: "CIBA aprovado — JWT elevado",
+    icon: "M9 12l2 2 4-4M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z",
+  },
+  ciba_denied: {
+    color: "var(--c-fail)",
+    tag: "CIBA negado",
+    title: "CIBA negado ou expirado",
+    icon: "M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3ZM9 9l6 6M15 9l-6 6",
+  },
+  jwt_identity_bound: {
+    color: "var(--c-request)",
+    tag: "identidade",
+    title: "JWT ligado no user-mcp",
+    icon: "M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
+  },
+  vault_db_creds_issued: {
+    color: "var(--c-obo)",
+    tag: "Vault mint",
+    title: "Vault emitiu credencial Postgres",
+    icon: "M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z",
+  },
+  db_call: {
+    color: "var(--c-tool)",
+    tag: "Postgres",
+    title: "Conexão Postgres com credencial dinâmica",
+    icon: "M4 6h16M4 12h16M4 18h16",
+  },
+  transform_encode: {
+    color: "var(--c-broker)",
+    tag: "Transform",
+    title: "Vault Transform mascarou um campo",
+    icon: "M12 2v20M2 12h20",
+  },
+  vault_lease_revoked: {
+    color: "var(--c-http)",
+    tag: "lease",
+    title: "Lease da credencial Postgres revogado",
+    icon: "M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6",
+  },
+  mesh_svid: {
+    color: "var(--c-request)",
+    tag: "mTLS SVID",
+    title: "Identidade SPIFFE mintada pelo Consul",
+    icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  },
+  mesh_intention: {
+    color: "var(--c-http)",
+    tag: "intention",
+    title: "Service Intention (quem pode falar com quem)",
+    icon: "M17 8h2a2 2 0 0 1 2 2v8H3V10a2 2 0 0 1 2-2h2M12 2v10",
+  },
+  opa_catalog: {
+    color: "var(--c-broker)",
+    tag: "OPA catalog",
+    title: "Catálogo MCP carregado no OPA",
+    icon: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 4.5A2.5 2.5 0 0 1 6.5 7H20v13H6.5A2.5 2.5 0 0 1 4 17.5z",
+  },
+  llm_error: {
+    color: "var(--c-fail)",
+    tag: "LLM",
+    title: "Falha no modelo (LiteLLM → Ollama)",
+    icon: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01",
+  },
 };
 
 const LEAD_TS_RE = /^(\d{4}-\d{2}-\d{2}T\S+?)\s+(.*)$/s;
@@ -143,15 +221,20 @@ const ACCESS_RE = /INFO:\s+(\S+)\s+-\s+"(\S+)\s+(\S+)\s+HTTP\/[\d.]+"\s+(\d+)\s*
 const USER_RE = /\[user=([^\s\]]+)\s+agent=([^\s\]]+)\]/;
 const USER_SOLO_RE = /\[user=([^\s\]]+)\]/;
 const USER_NOBRACK_RE = /^user=([^\s]+)\s+agent=([^\s]+)/;
+const JSON_IN_LINE_RE = /(\{.*\})\s*$/;
+const LOG_PREFIX_RE = /^(?:INFO|WARNING|ERROR|DEBUG):\s*[\w.]+[:\s]+/;
+const VAULT_LEASE_RE = /revoked lease:\s*lease_id=(\S+)/;
+const NOISE_PATH_RE = /\/health\/(live|ready)/;
 
 let STATE = {
   sessions: [],
   system: [],
+  snapshot: null,
   search: "",
   userFilter: "all",
   sourceFilter: "all",
   mask: true,
-  view: "timeline",
+  view: "hops",
 };
 
 const SOURCE_COLORS = [
@@ -206,34 +289,132 @@ function inferEventType(json) {
   return "log";
 }
 
+function parseKvFields(line) {
+  const json = {};
+  const re = /\b([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)/g;
+  let m;
+  while ((m = re.exec(line))) {
+    let value = m[2];
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (value === "-" || value === "None" || value === "null") value = null;
+    json[m[1]] = value;
+  }
+  return json;
+}
+
+function looksLikeSnapshot(json) {
+  return json && typeof json === "object" && Array.isArray(json.identities) && json.trust_domain;
+}
+
 function parseLogs(raw, source) {
   raw = stripRtf(raw);
-  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const lines = raw.split(/\r?\n/).map((l) => l.trimEnd()).filter((l) => l.trim());
   const events = [];
+  let snapshot = null;
+  let currentSource = source || null;
+  let expectSnapshot = false;
 
   for (const line of lines) {
-    let payload = line;
-    let containerTs = null;
+    const trimmed = line.trim();
+    if (trimmed.startsWith("### SOURCE ")) {
+      currentSource = trimmed.slice("### SOURCE ".length).trim();
+      continue;
+    }
+    if (trimmed === "### SNAPSHOT") {
+      expectSnapshot = true;
+      continue;
+    }
+    if (trimmed.startsWith("# ") || trimmed === "#") continue;
 
-    const lead = line.match(LEAD_TS_RE);
-    if (lead && (lead[2].startsWith("{") || lead[2].startsWith("INFO:"))) {
+    let payload = trimmed;
+    let containerTs = null;
+    const lead = trimmed.match(LEAD_TS_RE);
+    if (lead) {
       containerTs = lead[1];
       payload = lead[2].trim();
     }
 
     if (payload.startsWith("{")) {
       try {
-        events.push(buildJsonEvent(JSON.parse(payload), containerTs, source));
+        const json = JSON.parse(payload);
+        if (expectSnapshot || looksLikeSnapshot(json)) {
+          snapshot = json;
+          expectSnapshot = false;
+          continue;
+        }
+        if ((json.level || "").toUpperCase() === "DEBUG") continue;
+        events.push(buildJsonEvent(json, json.timestamp || containerTs, currentSource));
       } catch (e) {
         /* skip malformed json */
       }
-    } else if (payload.startsWith("INFO:")) {
-      const a = payload.match(ACCESS_RE);
-      if (a) events.push(buildAccessEvent(a, containerTs, source));
+      continue;
+    }
+    expectSnapshot = false;
+
+    const jsonTail = payload.match(JSON_IN_LINE_RE);
+    if (jsonTail && (payload.startsWith("{") === false) && jsonTail[1].includes('"event"')) {
+      try {
+        const json = JSON.parse(jsonTail[1]);
+        if ((json.level || "").toUpperCase() === "DEBUG") continue;
+        events.push(buildJsonEvent(json, json.timestamp || containerTs, currentSource));
+        continue;
+      } catch (e) {
+        /* fall through */
+      }
+    }
+
+    const stripped = payload.replace(LOG_PREFIX_RE, "");
+    if (stripped !== payload && stripped.startsWith("{")) {
+      try {
+        const json = JSON.parse(stripped);
+        events.push(buildJsonEvent(json, json.timestamp || containerTs, currentSource));
+        continue;
+      } catch (e) {
+        /* fall through */
+      }
+    }
+
+    const accessLine = payload.match(ACCESS_RE);
+    if (accessLine) {
+      if (!NOISE_PATH_RE.test(accessLine[3])) {
+        events.push(buildAccessEvent(accessLine, containerTs, currentSource));
+      }
+      continue;
+    }
+
+    if (/\bevent=/.test(payload)) {
+      const kv = parseKvFields(stripped.includes("=") ? stripped : payload);
+      if (!kv.event) continue;
+      events.push(buildJsonEvent(kv, kv.timestamp || containerTs, currentSource));
+      continue;
+    }
+
+    const lease = payload.match(VAULT_LEASE_RE);
+    if (lease) {
+      events.push(buildJsonEvent({
+        event: "vault_lease_revoked",
+        lease_id: lease[1],
+        message: payload.slice(0, 240),
+        timestamp: containerTs,
+      }, containerTs, currentSource));
+      continue;
+    }
+
+    if (/OpenAIException|Received Model Group=|InternalServerError:/.test(payload)) {
+      events.push(buildJsonEvent({
+        event: "llm_error",
+        message: payload.slice(0, 400),
+        timestamp: containerTs,
+        path: "/v1/chat/completions",
+      }, containerTs, currentSource));
     }
   }
 
-  return groupEvents(events);
+  const grouped = groupEvents(events);
+  grouped.snapshot = snapshot;
+  return grouped;
 }
 
 function toDate(tsStr) {
@@ -251,11 +432,11 @@ function buildJsonEvent(json, containerTs, source) {
     type: inferEventType(json),
     ts: toDate(json.timestamp || containerTs),
     tsRaw: json.timestamp || containerTs,
-    requestId: json.request_id || null,
-    user: userFromMsg || json.preferred_username || json.user || null,
+    requestId: json.request_id && json.request_id !== "-" ? json.request_id : null,
+    user: userFromMsg || json.preferred_username || json.login_hint || json.user || null,
     agentId: (mFull || mNobrack)?.[2] || json.agent_id || null,
     path: json.path || json.request_path || null,
-    source: source || null,
+    source: source || json.source || null,
     json,
   };
 }
@@ -336,6 +517,7 @@ function groupEvents(events) {
     else if (authzDeniedEv) brokerQuery = "OBO exchange (negado — autorização)";
     else if (verifyFailEv) brokerQuery = "OBO exchange (falhou após retries)";
     else if (httpErrorEv) brokerQuery = "OBO exchange (erro IBM Verify)";
+    const pepToolEv = evs.find((e) => e.type === "pdp_decision" && e.json?.tool);
     return {
       requestId: rid,
       events: evs,
@@ -345,7 +527,7 @@ function groupEvents(events) {
       query: startEv?.json?.user_message || respEv?.json?.user_message || brokerQuery || "",
       path: startEv?.path || webConvEv?.path || evs[0]?.path || "/v1/agent/query",
       status: respEv?.json?.status_code || webErrorEv?.json?.status || null,
-      tool: (toolEv || failEv)?.json?.tool || toolInvokedEv?.json?.tool || null,
+      tool: (toolEv || failEv)?.json?.tool || toolInvokedEv?.json?.tool || pepToolEv?.json?.tool || null,
       scopes: (toolEv || failEv || brokerEv)?.json?.required_scopes ||
         (brokerEv?.json?.scope ? [brokerEv.json.scope] : null) ||
         (scopeFromVerify ? [scopeFromVerify] : null) ||
@@ -357,22 +539,50 @@ function groupEvents(events) {
 
   // Attach matching POST access logs to their session window; rest is "system".
   // Skip access events with no resolvable timestamp (e.g. /mcp protocol logs without container prefix).
+  const MESH_TYPES = new Set(["mesh_svid", "mesh_intention", "opa_catalog", "collect_skip"]);
+  const ATTACH_TYPES = new Set([
+    "pdp_decision", "ciba_started", "ciba_approved", "ciba_denied",
+    "jwt_identity_bound", "vault_db_creds_issued", "db_call", "transform_encode",
+    "tool_invoked", "vault_lease_revoked",
+  ]);
   const system = [];
   for (const ev of access.filter((e) => e.ts)) {
-    const host = sessions.find(
-      (s) =>
-        ev.type === "http_access" &&
-        ev.method === "POST" &&
-        ev.path === s.path &&
-        ev.ts >= s.start &&
-        ev.ts <= new Date(s.end.getTime() + 3000)
-    );
-    if (host) {
-      host.events.push(ev);
-      host.events.sort((a, b) => a.ts - b.ts);
-    } else {
-      system.push(ev);
+    if (ev.type === "http_access" && ev.method === "POST") {
+      const host = sessions.find(
+        (s) =>
+          ev.ts >= s.start &&
+          ev.ts <= new Date(s.end.getTime() + 8000) &&
+          (ev.path === s.path ||
+            String(ev.path || "").includes("/chat/completions") ||
+            String(ev.path || "").includes("/user_mcp") ||
+            String(ev.path || "").includes("/v1/agent"))
+      );
+      if (host) {
+        host.events.push(ev);
+        host.events.sort((a, b) => a.ts - b.ts);
+        continue;
+      }
     }
+    if (ATTACH_TYPES.has(ev.type) && !MESH_TYPES.has(ev.type)) {
+      const tool = ev.json?.tool || ev.json?.binding_message || null;
+      const host = sessions.find((s) => {
+        const userOk = !ev.user || s.user === ev.user || s.user === "desconhecido";
+        const toolOk = !tool || !s.tool || s.tool === tool;
+        const windowOk = ev.ts >= new Date(s.start.getTime() - 5000) &&
+          ev.ts <= new Date(s.end.getTime() + 180000);
+        return userOk && toolOk && windowOk;
+      });
+      if (host) {
+        host.events.push(ev);
+        host.events.sort((a, b) => a.ts - b.ts);
+        host.end = host.events[host.events.length - 1].ts;
+        host.durationMs = host.end - host.start;
+        if (host.user === "desconhecido" && ev.user) host.user = ev.user;
+        if (!host.tool && tool) host.tool = tool;
+        continue;
+      }
+    }
+    system.push(ev);
   }
 
   return { sessions, system };
@@ -483,6 +693,43 @@ function eventDescription(ev) {
       return `Autenticação OIDC concluída &middot; <code>${escapeHtml(j.request_path || "/api/auth/callback")}</code>`;
     case "web_auth_logout":
       return `Sessão encerrada &middot; <code>${escapeHtml(j.request_path || "/api/auth/logout")}</code>`;
+    case "pdp_decision": {
+      const decision = j.PDP_Decision || j.decision || "";
+      const enforce = j.enforce ? ` enforce=<code>${escapeHtml(j.enforce)}</code>` : "";
+      const pep = j.pep ? ` PEP <code>${escapeHtml(j.pep)}</code>` : "";
+      const pdp = j.pdp ? ` PDP <code>${escapeHtml(j.pdp)}</code>` : "";
+      const who = j.caller ? ` caller <code>${escapeHtml(j.caller)}</code>` :
+        j.tool ? ` tool <code>${escapeHtml(j.tool)}</code>` :
+        j.path ? ` path <code>${escapeHtml(j.path)}</code>` : "";
+      const policy = j.pdp_package ? ` package <code>${escapeHtml(j.pdp_package)}</code>` : "";
+      const reason = j.reason ? ` reason=<code>${escapeHtml(String(j.reason))}</code>` : "";
+      const loa = j.LoA_Level ? ` LoA ${escapeHtml(String(j.LoA_Level))}/${escapeHtml(String(j.Required_LoA || j.LoA_Level))}` : "";
+      return `decisão <code>${escapeHtml(decision)}</code>${enforce}${pep}${pdp}${policy}${who}${reason}${loa}`;
+    }
+    case "ciba_started":
+      return `HITL para <code>${escapeHtml(j.login_hint || ev.user || "")}</code> · tool <code>${escapeHtml(j.binding_message || j.tool || "")}</code>${j.approve_url ? ` · <code>${escapeHtml(j.approve_url)}</code>` : ""}`;
+    case "ciba_approved":
+      return `Humano aprovou · JWT CIBA (LoA 2) para <code>${escapeHtml(j.login_hint || ev.user || "")}</code>`;
+    case "ciba_denied":
+      return `CIBA recusado/expirado · <code>${escapeHtml(j.ciba_error || "")}</code>`;
+    case "jwt_identity_bound":
+      return `user-mcp ligou <code>${escapeHtml(j.preferred_username || ev.user || "")}</code> · modo <code>${escapeHtml(j.pep_mode || "")}</code>${j.agent_id ? ` · agent <code>${escapeHtml(j.agent_id)}</code>` : ""}`;
+    case "vault_db_creds_issued":
+      return `Mint Postgres · path <code>${escapeHtml(j.creds_path || j.db_creds_path || "")}</code>${j.lease_id ? ` · lease <code>${escapeHtml(String(j.lease_id).slice(0, 24))}…</code>` : ""}`;
+    case "db_call":
+      return `Postgres <code>${escapeHtml(j.auth_mode || "")}</code> · user <code>${escapeHtml(j.db_username || "")}</code> · <code>${escapeHtml(j.db_creds_path || "")}</code>`;
+    case "transform_encode":
+      return `Transform <code>${escapeHtml(j.transformation || "")}</code> no role <code>${escapeHtml(j.role_name || "")}</code>`;
+    case "vault_lease_revoked":
+      return `Lease revogado <code>${escapeHtml(String(j.lease_id || "").slice(0, 24))}</code>`;
+    case "mesh_svid":
+      return `<code>${escapeHtml(j.namespace || "")}/${escapeHtml(j.service || "")}</code> · <code>${escapeHtml(j.spiffe_id || "")}</code>`;
+    case "mesh_intention":
+      return `<code>${escapeHtml(j.action || "allow")}</code> <code>${escapeHtml(j.source || "")}</code> → <code>${escapeHtml(j.dest || "")}</code>`;
+    case "opa_catalog":
+      return `Catálogo MCP no OPA (Vault KV)`;
+    case "llm_error":
+      return `<span class="err-inline">${escapeHtml((j.message || "").slice(0, 280))}</span>`;
     default:
       return escapeHtml(j.message || ev.type);
   }
@@ -515,6 +762,23 @@ function eventExtra(ev, masked) {
   if (j.url) kvs.push(["url destino", j.url]);
   if (j.operation) kvs.push(["operação", j.operation]);
   if (j.service) kvs.push(["serviço", j.service]);
+  if (ev.source) kvs.push(["fonte", ev.source]);
+  if (j.caller) kvs.push(["SPIFFE caller", j.caller]);
+  if (j.spiffe_id) kvs.push(["SPIFFE", j.spiffe_id]);
+  if (j.pep_mode) kvs.push(["PEP mode", j.pep_mode]);
+  if (j.pep) kvs.push(["PEP", j.pep]);
+  if (j.enforce) kvs.push(["enforce", j.enforce]);
+  if (j.pdp) kvs.push(["PDP", j.pdp]);
+  if (j.pdp_package) kvs.push(["PDP package", j.pdp_package]);
+  if (j.pdp_path) kvs.push(["PDP path", j.pdp_path]);
+  if (j.pdp_policy) kvs.push(["política PDP", j.pdp_policy]);
+  if (j.reason) kvs.push(["reason", String(j.reason)]);
+  if (j.PDP_Decision) kvs.push(["decisão", j.PDP_Decision]);
+  if (j.required_scopes) kvs.push(["scopes exigidos", Array.isArray(j.required_scopes) ? j.required_scopes.join(", ") : String(j.required_scopes)]);
+  if (j.granted_scopes) kvs.push(["scopes no JWT", Array.isArray(j.granted_scopes) ? j.granted_scopes.join(", ") : String(j.granted_scopes)]);
+  if (j.catalog_source) kvs.push(["catálogo source", j.catalog_source]);
+  if (j.catalog_dest) kvs.push(["catálogo dest", j.catalog_dest]);
+  if (j.ciba_required != null && j.ciba_required !== "") kvs.push(["ciba_required", String(j.ciba_required)]);
   if (kvs.length) {
     out += `<div class="kv">` + kvs.map(([k, v]) => `<span><b>${k}:</b> ${escapeHtml(v)}</span>`).join("") + `</div>`;
   }
@@ -551,7 +815,7 @@ function renderSession(s, masked) {
   const toolBadge = s.tool ? `<span class="badge">${escapeHtml(s.tool)}</span>` : "";
   const outcomeBadge = oc.cls ? `<span class="badge ${oc.cls}" title="${oc.desc}">${oc.label}</span>` : "";
   return `
-    <article class="session outcome-${s.tokenOutcome}" data-user="${escapeHtml(s.user)}">
+    <article class="session outcome-${s.tokenOutcome}" data-user="${escapeHtml(s.user)}" data-request-id="${escapeHtml(s.requestId)}">
       <div class="session-head">
         <div class="avatar">${initials(s.user)}</div>
         <div class="session-meta">
@@ -611,6 +875,14 @@ const AUDIT_META = {
   obo_token_exchange_authz_denied: { result: "fail", label: "Troca OBO negada (autorização)", color: "var(--c-fail)" },
   tool_invoked: { result: "use", label: "Ferramenta MCP executada (user-mcp)", color: "var(--c-tool)" },
   web_agent_error: { result: "fail", label: "Erro no agent service (web app)", color: "var(--c-fail)" },
+  pdp_decision: { result: "ok", label: "Decisão PEP (LiteLLM / OPA)", color: "var(--c-obo)" },
+  ciba_started: { result: "request", label: "CIBA iniciado", color: "var(--c-broker)" },
+  ciba_approved: { result: "ok", label: "CIBA aprovado (identidade LoA 2)", color: "var(--c-obo)" },
+  ciba_denied: { result: "fail", label: "CIBA negado", color: "var(--c-fail)" },
+  vault_db_creds_issued: { result: "ok", label: "Vault mintou credencial Postgres", color: "var(--c-obo)" },
+  db_call: { result: "use", label: "Postgres com credencial dinâmica", color: "var(--c-tool)" },
+  transform_encode: { result: "use", label: "Vault Transform (PII)", color: "var(--c-broker)" },
+  jwt_identity_bound: { result: "ok", label: "JWT ligado no user-mcp", color: "var(--c-request)" },
 };
 
 const RESULT_CHIP = {
@@ -639,6 +911,11 @@ function buildVaultEvents() {
       expiry: j.expiry_time ? new Date(j.expiry_time * 1000) : null,
       error: j.error_message || (j.verify_error?.detail) || j.error || null,
       brokerUrl: j.token_exchange_url || j.http_path || null,
+      pep: j.pep || null,
+      enforce: j.enforce || null,
+      pdp: j.pdp || null,
+      pdpPolicy: j.pdp_policy || null,
+      reason: j.reason || null,
     });
   };
   for (const s of STATE.sessions) {
@@ -696,6 +973,11 @@ function renderVaultAudit() {
       if (r.tool) details.push(`<span><b>ferramenta:</b> <code>${escapeHtml(r.tool)}</code></span>`);
       if (r.expiry) details.push(`<span><b>expira:</b> ${escapeHtml(r.expiry.toLocaleString("pt-BR"))}</span>`);
       if (r.brokerUrl) details.push(`<span><b>broker:</b> <code>${escapeHtml(r.brokerUrl)}</code></span>`);
+      if (r.pep) details.push(`<span><b>PEP:</b> <code>${escapeHtml(r.pep)}</code></span>`);
+      if (r.enforce) details.push(`<span><b>enforce:</b> <code>${escapeHtml(r.enforce)}</code></span>`);
+      if (r.pdp) details.push(`<span><b>PDP:</b> <code>${escapeHtml(r.pdp)}</code></span>`);
+      if (r.pdpPolicy) details.push(`<span><b>política:</b> <code>${escapeHtml(r.pdpPolicy)}</code></span>`);
+      if (r.reason) details.push(`<span><b>reason:</b> <code>${escapeHtml(String(r.reason))}</code></span>`);
       if (r.error) details.push(`<span class="err"><b>erro:</b> ${escapeHtml(r.error)}</span>`);
       if (r.requestId) details.push(`<span><b>request:</b> <code>${escapeHtml(r.requestId)}</code></span>`);
       return `
@@ -715,6 +997,210 @@ function renderVaultAudit() {
     .join("");
 
   return renderUserSummary() + `<div class="audit-feed">${feed}</div>`;
+}
+
+/* --------------------------- Hop / fluxo view ----------------------------- */
+
+const HOP_DEFS = [
+  {
+    id: "mesh-svid",
+    title: "mTLS / SVID Consul Connect",
+    role: "Consul",
+    responsibility: "Mint SPIFFE no sidecar consul-dataplane. Service Intentions decidem quem fala com quem. Não decide tool nem CIBA.",
+    match: (e) => e.type === "mesh_svid" || e.type === "mesh_intention",
+  },
+  {
+    id: "web",
+    title: "Browser → web (API Gateway)",
+    role: "Consul API Gateway + web",
+    responsibility: "TLS norte-sul (:8080). Login Keycloak. Encaminha o chat para o LiteLLM.",
+    match: (e) => ["web_conversation_started", "web_auth_callback"].includes(e.type),
+  },
+  {
+    id: "admit-web",
+    title: "Admissão LiteLLM (SPIFFE web)",
+    role: "LiteLLM pdp_auth.py",
+    responsibility: "Lua no inbound copia uriSanPeerCertificate para x-mesh-caller-spiffe. Só default/web e default/ai-agent entram como mesh.",
+    match: (e) => e.type === "pdp_decision" && String(e.json?.caller || "").includes("web"),
+  },
+  {
+    id: "agent",
+    title: "LiteLLM → ai-agent",
+    role: "ai-agent",
+    responsibility: "Orquestra o LLM e dispara tools MCP. Não é PDP de tools/call.",
+    match: (e) => e.type === "agent_request_started" || e.type === "web_agent_error",
+  },
+  {
+    id: "llm",
+    title: "LiteLLM → LLM (qwen-local / Ollama)",
+    role: "LiteLLM AI Gateway",
+    responsibility: "Proxy de /v1/chat/completions. Sem Ollama em :11434 este hop 500 e o MCP nem começa.",
+    match: (e) =>
+      e.type === "llm_error" ||
+      (e.type === "http_access" && String(e.path || "").includes("/chat/completions")),
+  },
+  {
+    id: "obo",
+    title: "Mint identidade OBO",
+    role: "token-exchange + Keycloak",
+    responsibility: "RFC 8693: JWT do usuário → JWT aud=user-mcp com scope. Actor token do Vault no broker.",
+    match: (e) => ["identity_broker_call", "obo_token_exchange_completed", "verify_obo_token_exchange"].includes(e.type),
+  },
+  {
+    id: "admit-agent",
+    title: "Admissão LiteLLM (SPIFFE ai-agent)",
+    role: "LiteLLM pdp_auth.py",
+    responsibility: "tools/call chega de default/ai-agent. Authorization continua o JWT OBO.",
+    match: (e) => e.type === "pdp_decision" && String(e.json?.caller || "").includes("ai-agent"),
+  },
+  {
+    id: "mcp-pep",
+    title: "PEP tools/call → OPA",
+    role: "LiteLLM pdp_mcp.py + OPA mcp.pep",
+    responsibility: "Valida JWT Keycloak, pergunta catálogo / scope / CIBA. ALLOW, DENY ou STEP_UP.",
+    match: (e) => e.type === "pdp_decision" && e.json?.tool,
+  },
+  {
+    id: "ciba",
+    title: "Step-up CIBA (HITL)",
+    role: "LiteLLM + Keycloak + ciba-channel",
+    responsibility: "OPA marca ciba_required. O PEP faz poll. Approve em localhost:8082. JWT LoA 2 substitui o OBO.",
+    optional: true,
+    optionalNote: "Não dispara em list/search/update — só create_user e delete_user_by_email.",
+    match: (e) => ["ciba_started", "ciba_approved", "ciba_denied"].includes(e.type) || e.json?.PDP_Decision === "STEP_UP_REQUIRED",
+  },
+  {
+    id: "runtime-jwt",
+    title: "user-mcp liga a identidade",
+    role: "user-mcp runtime",
+    responsibility: "Não valida JWKS. Confia no Bearer que o LiteLLM já autorizou.",
+    match: (e) => e.type === "jwt_identity_bound",
+  },
+  {
+    id: "vault-creds",
+    title: "Vault mint credencial Postgres",
+    role: "Vault ORS + user-mcp",
+    responsibility: "database/creds/{read|write}-role. JWT OBO/CIBA como X-Vault-Token. Vault não decide a tool.",
+    match: (e) => ["vault_db_creds_issued", "db_call"].includes(e.type),
+  },
+  {
+    id: "transform",
+    title: "Vault Transform (PII)",
+    role: "Vault Transform + user-mcp",
+    responsibility: "Mascara campos nas leituras se groups não contém admin.",
+    match: (e) => e.type === "transform_encode",
+  },
+  {
+    id: "tool",
+    title: "Tool MCP executada",
+    role: "user-mcp runtime",
+    responsibility: "SQL com a credencial de um hop: list / search / create / update / delete.",
+    match: (e) => ["tool_invoked", "scoped_tool_invoke"].includes(e.type),
+  },
+  {
+    id: "response",
+    title: "Resposta ao usuário",
+    role: "ai-agent",
+    responsibility: "Fecha o request_id e devolve o texto (PII pode estar mascarado).",
+    match: (e) => e.type === "response_sent",
+  },
+];
+
+function allEvents() {
+  const out = [];
+  for (const s of STATE.sessions) out.push(...s.events);
+  out.push(...STATE.system);
+  return out;
+}
+
+function hopPolicyBlock(ev) {
+  if (!ev) return "";
+  const j = ev.json || {};
+  const rows = [
+    ["PEP", j.pep],
+    ["enforce", j.enforce],
+    ["PDP", j.pdp],
+    ["package", j.pdp_package],
+    ["path PDP", j.pdp_path],
+    ["política", j.pdp_policy],
+    ["decisão", j.PDP_Decision || j.decision],
+    ["reason", j.reason],
+    ["tool", j.tool],
+    ["caller", j.caller],
+    ["scopes exigidos", Array.isArray(j.required_scopes) ? j.required_scopes.join(", ") : j.required_scopes],
+    ["scopes no JWT", Array.isArray(j.granted_scopes) ? j.granted_scopes.join(", ") : j.granted_scopes],
+    ["catálogo", j.catalog_source && j.catalog_dest ? `${j.catalog_source} → ${j.catalog_dest}` : null],
+    ["ciba_required", j.ciba_required == null || j.ciba_required === "" ? null : String(j.ciba_required)],
+    ["LoA", j.LoA_Level != null ? `${j.LoA_Level}/${j.Required_LoA || j.LoA_Level}` : null],
+  ].filter(([, v]) => v != null && v !== "" && v !== "-");
+  if (!rows.length) return "";
+  return `<dl class="hop-policy">${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd><code>${escapeHtml(String(v))}</code></dd></div>`).join("")}</dl>`;
+}
+
+function renderHops() {
+  const events = allEvents();
+  const hops = HOP_DEFS.map((hop) => {
+    const hits = events.filter(hop.match).sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    return { ...hop, hits };
+  });
+  const seen = hops.filter((h) => h.hits.length).length;
+  const tools = [...new Set(events.map((e) => e.json?.tool).filter(Boolean))];
+  const callers = [...new Set(events.filter((e) => e.type === "pdp_decision" && e.json?.caller).map((e) => e.json.caller))];
+  const snap = STATE.snapshot;
+
+  let identHtml = "";
+  if (snap && Array.isArray(snap.identities) && snap.identities.length) {
+    identHtml = `
+      <div class="audit-summary hop-ident">
+        <h3>Identidades mintadas (Consul Connect SVID)</h3>
+        <p class="hop-note">Trust domain <code>${escapeHtml(snap.trust_domain)}</code> · ${escapeHtml(snap.collected_at || "")}</p>
+        <table class="u-table">
+          <thead><tr><th>Serviço</th><th>SPIFFE</th><th>Quem minta</th></tr></thead>
+          <tbody>
+            ${snap.identities.map((id) => `
+              <tr>
+                <td><code>${escapeHtml(id.namespace)}/${escapeHtml(id.service)}</code></td>
+                <td><code>${escapeHtml(id.spiffe_id)}</code></td>
+                <td>${escapeHtml(id.mint || "Consul Connect")}</td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  const hopCards = hops.map((h) => {
+    const seenCls = h.hits.length ? "seen" : h.optional ? "skip" : "miss";
+    const evidence = h.hits.slice(-3).map((ev) => {
+      const t = ev.ts ? fmtTime(ev.ts) : "";
+      return `<li><span class="hop-ev-time">${t}</span> ${eventDescription(ev)}</li>`;
+    }).join("");
+    const status = h.hits.length
+      ? h.hits.length + " evidência(s)"
+      : h.optional
+        ? (h.optionalNote || "não se aplica neste fluxo")
+        : "ainda não visto";
+    const lastPep = [...h.hits].reverse().find((ev) => ev.json && (ev.json.pep || ev.json.pdp_policy || ev.json.enforce));
+    return `
+      <article class="hop ${seenCls}">
+        <div class="hop-top">
+          <span class="hop-role">${escapeHtml(h.role)}</span>
+          <span class="hop-count">${escapeHtml(status)}</span>
+        </div>
+        <h3>${escapeHtml(h.title)}</h3>
+        <p>${escapeHtml(h.responsibility)}</p>
+        ${hopPolicyBlock(lastPep || h.hits[h.hits.length - 1])}
+        ${evidence ? `<ul class="hop-evidence">${evidence}</ul>` : ""}
+      </article>`;
+  }).join("");
+
+  return `
+    <div class="hop-legend">
+      <div class="stat-card" style="--bar:var(--c-obo)"><div class="stat-value">${seen}/${hops.length}</div><div class="stat-label">Hops com evidência</div><div class="stat-sub">stream ao vivo</div></div>
+      <div class="stat-card" style="--bar:var(--c-tool)"><div class="stat-value">${tools.length || "—"}</div><div class="stat-label">Tools vistas</div><div class="stat-sub">${escapeHtml(tools.join(", ") || "use o chat em :8080")}</div></div>
+      <div class="stat-card" style="--bar:var(--c-request)"><div class="stat-value">${callers.length || "—"}</div><div class="stat-label">Callers SPIFFE</div><div class="stat-sub">${escapeHtml(callers.join(", ") || "aguardando pdp_auth")}</div></div>
+    </div>
+    ${identHtml}
+    <div class="hop-grid">${hopCards}</div>`;
 }
 
 /* ----------------------------- Stats -------------------------------------- */
@@ -817,13 +1303,31 @@ function render() {
   renderSourceFilters();
 
   const tl = document.getElementById("timeline");
+  const prevScroll = tl.scrollTop;
+  const nearBottom = tl.scrollHeight - tl.clientHeight - prevScroll < 80;
+  const collapsedIds = new Set(
+    [...tl.querySelectorAll(".session.collapsed")].map((el) => el.dataset.requestId || el.dataset.user)
+  );
   const maskWrap = document.getElementById("maskToggle").closest(".toggle");
+  const statsEl = document.getElementById("stats");
+
+  if (STATE.view === "hops") {
+    tl.classList.add("vault-view");
+    if (maskWrap) maskWrap.style.display = "none";
+    if (statsEl) statsEl.style.display = "none";
+    tl.innerHTML = renderHops();
+    document.getElementById("emptyState").hidden = true;
+    restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds);
+    return;
+  }
+  if (statsEl) statsEl.style.display = "";
 
   if (STATE.view === "vault") {
     tl.classList.add("vault-view");
     if (maskWrap) maskWrap.style.display = "none";
     tl.innerHTML = renderVaultAudit();
     document.getElementById("emptyState").hidden = tl.querySelector(".audit-row") != null;
+    restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds);
     return;
   }
 
@@ -845,46 +1349,66 @@ function render() {
   if (STATE.userFilter === "all" && !q) html += renderSystemSession(sysVisible, STATE.mask);
 
   tl.innerHTML = html;
+  restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds);
   const isEmpty = visible.length === 0 && !STATE.system.length;
   document.getElementById("emptyState").hidden = !isEmpty;
   const emptyMsg = document.getElementById("emptyMsg");
   if (emptyMsg) {
     emptyMsg.textContent = !hasData
-      ? "Carregue um arquivo de log para começar."
+      ? "O stream ao vivo está ligado — use o chat em http://localhost:8080."
       : "Nenhum evento corresponde aos filtros atuais.";
   }
+}
+
+function restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds) {
+  tl.querySelectorAll(".session").forEach((el) => {
+    const id = el.dataset.requestId || el.dataset.user;
+    if (collapsedIds.has(id)) el.classList.add("collapsed");
+  });
+  tl.scrollTop = nearBottom ? tl.scrollHeight : prevScroll;
 }
 
 /* ---------------------------- Events / wiring ----------------------------- */
 
 function recomputeOutcome(evs) {
   const has = (t) => evs.some((e) => e.type === t);
-  if (has("scoped_tool_token_exchange_failed") || has("obo_token_exchange_internal_error") || has("obo_token_exchange_authz_denied")) return "denied";
-  if (has("obo_token_exchange_completed") || has("verify_obo_token_exchange")) return "issued";
+  if (has("scoped_tool_token_exchange_failed") || has("obo_token_exchange_internal_error") || has("obo_token_exchange_authz_denied") || has("ciba_denied")) return "denied";
+  if (evs.some((e) => e.type === "pdp_decision" && e.json?.PDP_Decision === "DENY")) return "denied";
+  if (has("obo_token_exchange_completed") || has("verify_obo_token_exchange") || has("vault_db_creds_issued")) return "issued";
   if (has("scoped_tool_invoke") && !has("identity_broker_call")) return "cached";
   return "n/a";
 }
 
+function eventKey(ev) {
+  const j = ev.json || {};
+  return [ev.tsRaw || "", ev.type, ev.source || "", j.path || "", j.tool || "", j.enforce || j.PDP_Decision || ev.path || ""].join("|");
+}
+
 function loadData(raw, source) {
-  const { sessions, system } = parseLogs(raw, source);
+  const { sessions, system, snapshot } = parseLogs(raw, source);
   STATE.sessions = sessions;
   STATE.system = system;
+  STATE.snapshot = snapshot || STATE.snapshot;
   STATE.sourceFilter = "all";
   render();
   return sessions.length;
 }
 
 function appendData(raw, source) {
-  const { sessions: newSessions, system: newSystem } = parseLogs(raw, source);
+  const { sessions: newSessions, system: newSystem, snapshot } = parseLogs(raw, source);
+  if (snapshot) STATE.snapshot = snapshot;
   const existingMap = new Map(STATE.sessions.map((s) => [s.requestId, s]));
   let merged = 0, added = 0;
 
   for (const ns of newSessions) {
     if (existingMap.has(ns.requestId)) {
       const es = existingMap.get(ns.requestId);
-      const seen = new Set(es.events.map((e) => (e.tsRaw || "") + e.type));
+      const seen = new Set(es.events.map(eventKey));
       for (const ev of ns.events) {
-        if (!seen.has((ev.tsRaw || "") + ev.type)) es.events.push(ev);
+        if (!seen.has(eventKey(ev))) {
+          es.events.push(ev);
+          seen.add(eventKey(ev));
+        }
       }
       es.events.sort((a, b) => a.ts - b.ts);
       es.start = es.events[0].ts;
@@ -903,7 +1427,14 @@ function appendData(raw, source) {
   }
 
   STATE.sessions = [...existingMap.values()].sort((a, b) => a.start - b.start);
-  STATE.system = [...STATE.system, ...newSystem].sort((a, b) => (a.ts || 0) - (b.ts || 0));
+  const seenSys = new Set(STATE.system.map(eventKey));
+  for (const ev of newSystem) {
+    if (!seenSys.has(eventKey(ev))) {
+      STATE.system.push(ev);
+      seenSys.add(eventKey(ev));
+    }
+  }
+  STATE.system.sort((a, b) => (a.ts || 0) - (b.ts || 0));
   render();
   return { merged, added };
 }
@@ -911,6 +1442,7 @@ function appendData(raw, source) {
 function clearData() {
   STATE.sessions = [];
   STATE.system = [];
+  STATE.snapshot = null;
   STATE.search = "";
   STATE.userFilter = "all";
   STATE.sourceFilter = "all";
@@ -1050,5 +1582,66 @@ function wire() {
 
 document.addEventListener("DOMContentLoaded", () => {
   wire();
+  const refresh = document.getElementById("refreshDump");
+  if (refresh) refresh.hidden = true;
+  setLiveStatus("connecting");
   render();
+  connectLive();
 });
+
+function setLiveStatus(state) {
+  const el = document.getElementById("liveStatus");
+  if (!el) return;
+  el.hidden = false;
+  el.classList.remove("ok", "bad", "wait");
+  if (state === "live") {
+    el.classList.add("ok");
+    el.textContent = "ao vivo";
+  } else if (state === "connecting") {
+    el.classList.add("wait");
+    el.textContent = "ligando stream…";
+  } else {
+    el.classList.add("bad");
+    el.textContent = "stream caído — make hop-logs";
+  }
+}
+
+const _liveBuf = [];
+let _liveFlush = null;
+
+function enqueueLive(source, line) {
+  _liveBuf.push({ source, line });
+  if (_liveFlush) return;
+  _liveFlush = setTimeout(() => {
+    _liveFlush = null;
+    const bySource = new Map();
+    for (const item of _liveBuf.splice(0)) {
+      bySource.set(item.source, (bySource.get(item.source) || "") + item.line + "\n");
+    }
+    for (const [src, text] of bySource) appendData(text, src);
+  }, 250);
+}
+
+function connectLive() {
+  if (typeof EventSource === "undefined") {
+    setLiveStatus("down");
+    return;
+  }
+  const es = new EventSource("/stream");
+  es.onopen = () => setLiveStatus("live");
+  es.onerror = () => setLiveStatus("down");
+  es.onmessage = (ev) => {
+    let msg;
+    try {
+      msg = JSON.parse(ev.data);
+    } catch (err) {
+      return;
+    }
+    if (msg.snapshot) {
+      STATE.snapshot = msg.snapshot;
+      setLiveStatus("live");
+      render();
+    }
+    if (msg.line) enqueueLive(msg.source || "cluster", msg.line);
+  };
+}
