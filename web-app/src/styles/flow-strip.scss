@@ -67,7 +67,7 @@
 .flow-strip__svg {
   display: block;
   width: 100%;
-  height: 340px;
+  height: 400px;
   max-width: 1584px;
   margin: 0 auto;
   overflow: visible;
@@ -94,17 +94,38 @@
     filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.18));
   }
 
-  &[data-key='policy'] circle {
+  &[data-key='pep'] circle {
     stroke-width: 2.5;
     filter: drop-shadow(0 0 8px rgba(138, 63, 252, 0.45));
+  }
+
+  &[data-key='opa'] circle {
+    stroke-width: 2.25;
+    filter: drop-shadow(0 0 6px rgba(165, 110, 255, 0.4));
   }
 
   .fs-label {
     fill: var(--cds-text-primary);
     font-family: var(--cds-font-sans);
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 600;
     letter-spacing: 0.16px;
+  }
+
+  .fs-role {
+    fill: var(--cds-text-secondary);
+    font-family: var(--cds-font-sans);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12px;
+  }
+
+  .fs-tool {
+    fill: var(--cds-text-helper);
+    font-family: var(--cds-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08px;
   }
 }
 
@@ -162,6 +183,8 @@
     height: 260px;
   }
   .fs-label,
+  .fs-role,
+  .fs-tool,
   .fs-annotation,
   .fs-boundary-title,
   .fs-flow-labels {

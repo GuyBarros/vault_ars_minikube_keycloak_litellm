@@ -1,0 +1,16 @@
+{
+  "preferred_username": "user",
+  "acr": null,
+  "loa": null,
+  "amr": null,
+  "scope": "openid email profile Agent.Invoke",
+  "groups": [
+    "reader"
+  ],
+  "aud": "token-exchange",
+  "iss": "http://localhost:8081/realms/demo",
+  "exp": 1789847059,
+  "iat": 1789818259,
+  "typ": "Bearer",
+  "azp": "web"
+}

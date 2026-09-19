@@ -1,0 +1,766 @@
+{
+  "executed_at": "2026-09-19T11:44:19.421022+00:00",
+  "lab": "minikube local-minikube-demo",
+  "mapping": {
+    "Canal": "web-app http://localhost:8080",
+    "IdP": "Keycloak http://localhost:8081 realm demo",
+    "PEP": "LiteLLM pdp_auth.py + pdp_mcp.py",
+    "PDP": "OPA opa-server package mcp.pep",
+    "Agente generalista": "ai-agent",
+    "Agente especialista": "user-mcp",
+    "CN/mTLS": "Consul SPIFFE (não CN X.509 estático)",
+    "LoA1": "senha + tools sem CIBA",
+    "LoA2": "CIBA create_user / delete_user_by_email",
+    "LoA3": "não implementado"
+  },
+  "cases": [
+    {
+      "id": "CT-01.1",
+      "title": "Autenticação de usuário com fator único (LoA=1)",
+      "status": "PASS",
+      "request": "Authorization Code + PKCE em /realms/demo (client web) → POST /token",
+      "response": {
+        "token_http": 200,
+        "claims": {
+          "preferred_username": "user",
+          "acr": null,
+          "loa": null,
+          "amr": null,
+          "scope": "openid email profile Agent.Invoke",
+          "groups": [
+            "reader"
+          ],
+          "aud": "token-exchange",
+          "iss": "http://localhost:8081/realms/demo",
+          "exp": 1789847059,
+          "iat": 1789818259,
+          "typ": "Bearer",
+          "azp": "web"
+        },
+        "jwks": {
+          "ok": true,
+          "alg": "RS256",
+          "kid": "bAFzZMzNu8tdkP97vndOqyXTGLULoeDkHvpAlZDSoOs",
+          "sub": null
+        },
+        "note": "O realm demo não emite claim loa/acr=1. LoA=1 no lab = senha única + tools sem CIBA (list/search/update)."
+      },
+      "log": null,
+      "config": "infra/local-minikube/templates/keycloak-realm.json + web-app Authorization Code",
+      "screenshot": "ct-01-1-login.png",
+      "mapping": "Canal=web-app :8080 · IdP=Keycloak demo",
+      "roles": {
+        "request": {
+          "responsabilidade": "IdP Keycloak",
+          "tool": "POST /realms/demo/protocol/openid-connect/token (grant password / Authorization Code)"
+        },
+        "log": {
+          "responsabilidade": "IdP Keycloak",
+          "tool": "emissão JWT (sem log de app neste hop)"
+        },
+        "config": {
+          "responsabilidade": "IdP",
+          "tool": "infra/local-minikube/templates/keycloak-realm.json · client web"
+        }
+      }
+    },
+    {
+      "id": "CT-01.2",
+      "title": "Autenticação MFA / LoA=2 no login do IdP",
+      "status": "N/A — coberto por CIBA (CT-05)",
+      "request": "Realm demo não exige TOTP no login.",
+      "response": {
+        "acr": null,
+        "amr": null
+      },
+      "log": null,
+      "config": "ciba_tools em infra/config/opa_policies/mcp_pep.rego = {create_user, delete_user_by_email} → LoA=2 no PEP, não no login.",
+      "screenshot": "ct-05-2-ciba.png",
+      "mapping": "LoA=2 do caderno = step-up CIBA, não MFA no Keycloak.",
+      "roles": {
+        "request": {
+          "responsabilidade": "IdP Keycloak",
+          "tool": "login TOTP/MFA (não existe no realm demo)"
+        },
+        "log": {
+          "responsabilidade": "PEP LiteLLM / PDP OPA",
+          "tool": "CIBA cobre LoA=2 — ver CT-05 · tool create_user"
+        },
+        "config": {
+          "responsabilidade": "PDP OPA mcp.pep",
+          "tool": "infra/config/opa_policies/mcp_pep.rego · ciba_tools"
+        }
+      }
+    },
+    {
+      "id": "CT-01.3",
+      "title": "Autenticação forte / biometria LoA=3",
+      "status": "N/A",
+      "request": "Lab não implementa LoA=3 / WebAuthn.",
+      "response": {
+        "note": "Guia: só existe um mecanismo de elevação (CIBA = LoA 2)."
+      },
+      "log": null,
+      "config": "documentation/Guia_Configuracao.md §6 — Não há LoA 3",
+      "screenshot": null,
+      "mapping": "Fora do escopo do laboratório.",
+      "roles": {
+        "request": {
+          "responsabilidade": "IdP Keycloak",
+          "tool": "WebAuthn/FIDO2 (não implementado)"
+        },
+        "log": {
+          "responsabilidade": "—",
+          "tool": "sem hop de LoA=3"
+        },
+        "config": {
+          "responsabilidade": "PDP / Guia",
+          "tool": "documentation/Guia_Configuracao.md §6 — não há LoA 3"
+        }
+      }
+    },
+    {
+      "id": "CT-01.4",
+      "title": "Falha na autenticação por credenciais inválidas",
+      "status": "PASS",
+      "request": "POST login-actions/authenticate username=user password=senha-errada-uat",
+      "response": {
+        "http": 400,
+        "issued_code": false,
+        "error_on_page": true,
+        "excerpt": "{\"error\":\"invalid_grant\",\"error_description\":\"Invalid user credentials\"}"
+      },
+      "log": null,
+      "config": "Keycloak realm demo — Direct Access Grants desligado no client web; falha no form OIDC.",
+      "screenshot": "ct-01-4-bad-login.png",
+      "mapping": "IdP recusa; nenhum authorization code.",
+      "roles": {
+        "request": {
+          "responsabilidade": "IdP Keycloak",
+          "tool": "POST /token username=user password inválida"
+        },
+        "log": {
+          "responsabilidade": "IdP Keycloak",
+          "tool": "invalid_grant · nenhum JWT"
+        },
+        "config": {
+          "responsabilidade": "IdP",
+          "tool": "realm demo · Direct Access Grants no client web (UAT)"
+        }
+      }
+    },
+    {
+      "id": "CT-01.5",
+      "title": "PEP recusa JWT adulterado (assinatura inválida)",
+      "status": "PASS",
+      "request": "tools/call list_all_users com JWT cujo payload foi alterado para loa=3 sem re-assinar",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": false,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Error: Token is invalid: Signature verification failed\"}],\"isError\":true}}\r\n\r\n"
+        }
+      },
+      "log": "{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/agent/query\",\"caller\":\"default/web\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/chat/completions\",\"caller\":\"default/ai-agent\",\"request_id\":\"ed3b0865-bed4-46cc-9389-79aed727c916\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"656978da-58d6-4acc-b7bc-252c3f455dff\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"DENY\",\"tool\":\"list_all_users\",\"error\":\"invalid_token\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"deny\",\"reason\":\"Token is invalid: Signature verification failed\"}\n11:44:20 - LiteLLM:ERROR: server.py:1184 - MCP mcp_server_tool_call - error: Token is invalid: Signature verification failed\n    self._verify_signature(\n  File \"/app/.venv/lib/python3.13/site-packages/jwt/api_jws.py\", line 417, in _verify_signature\n    raise InvalidSignatureError(\"Signature verification failed\")\njwt.exceptions.InvalidSignatureError: Signature verification failed\n    raise PepDenied(f\"Token is invalid: {exc}\", error=\"invalid_token\") from exc\npdp_mcp.PepDenied: Token is invalid: Signature verification failed\nException: Token is invalid: Signature verification failed",
+      "config": "litellm-gateway/pdp_mcp.py KeycloakJwtValidator — jwt.InvalidSignatureError → PepDenied invalid_token",
+      "screenshot": null,
+      "mapping": "PEP LiteLLM valida JWKS Keycloak antes do PDP.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM",
+          "tool": "tools/call list_all_users (JWT payload adulterado)"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_mcp.pre_mcp_call",
+          "tool": "PepDenied invalid_token · list_all_users"
+        },
+        "config": {
+          "responsabilidade": "PEP",
+          "tool": "litellm-gateway/pdp_mcp.py · KeycloakJwtValidator"
+        }
+      }
+    },
+    {
+      "id": "CT-02.1",
+      "title": "Handshake mTLS válido e extração da identidade do workload",
+      "status": "PASS",
+      "request": "ai-agent → LiteLLM (Consul mTLS) tools/call list_all_users",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": false,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"_meta\":{\"assurance\":{\"tool\":\"list_all_users\",\"decision\":\"ALLOW\",\"current_loa\":1,\"required_loa\":1}},\"content\":[{\"type\":\"text\",\"text\":\"[{\\\"email\\\":\\\"amelia.wilson475@example.com\\\",\\\"first_name\\\":\\\"Amelia\\\",\\\"last_name\\\":\\\"Wilson\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.***.**.***\\\"},{\\\"email\\\":\\\"charlotte.anderson799@example.com\\\",\\\"first_name\\\":\\\"Charlotte\\\",\\\"last_name\\\":\\\"Anderson\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"*.***.***.***\\\"},{\\\"email\\\":\\\"henry.davis409@example.com\\\",\\\"first_name\\\":\\\"Henry\\\",\\\"last_name\\\":\\\"Davis\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.***.***.***\\\"},{\\\"email\\\":\\\"mia.williams670@example.com\\\",\\\"first_name\\\":\\\"Mia\\\",\\\"last_name\\\":\\\"Williams\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.**.**.***\\\"},{\\\"email\\\":\\\"noah.miller24@example.com\\\",\\\"first_name\\\":\\\"Noah\\\",\\\"last_name\\\":\\\"Miller\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.***.***.***\\\"},{\\\"email\\\":\\\"noah.thompson206@example.com\\\",\\\"first_name\\\":\\\"Noah\\\",\\\"last_name\\\":\\\"Thompson\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_c"
+        }
+      },
+      "log": "{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/agent/query\",\"caller\":\"default/web\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/chat/completions\",\"caller\":\"default/ai-agent\",\"request_id\":\"ed3b0865-bed4-46cc-9389-79aed727c916\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"656978da-58d6-4acc-b7bc-252c3f455dff\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"DENY\",\"tool\":\"list_all_users\",\"error\":\"invalid_token\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"deny\",\"reason\":\"Token is invalid: Signature verification failed\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"56bd93a5-1a31-41f1-8047-8102528b6bc9\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"tool\":\"list_all_users\",\"PDP_Decision\":\"ALLOW\",\"LoA_Level\":1,\"Required_LoA\":1,\"preferred_username\":\"user\",\"reason\":\"allow\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"http://opa-service.opa.svc.cluster.local/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"inject_obo_jwt\",\"allow\":true,\"ciba_required\":false,\"catalog_source\":\"default/litellm-gateway\",\"catalog_dest\":\"default/user-mcp\",\"required_scopes\":[\"users.read\"],\"granted_scopes\":[\"users.read\"],\"ciba_tool\":false}",
+      "config": "mesh-timeouts.yaml Lua copia SPIFFE → x-mesh-caller-spiffe; pdp_auth.py ADMITTED_SERVICES={default/web, default/ai-agent}",
+      "screenshot": "ct-02-1-hops.png",
+      "mapping": "CN do caderno = SPIFFE URI spiffe://.../ns/default/sa/ai-agent (não CN X.509 estático).",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP malha + Consul mTLS",
+          "tool": "tools/call list_all_users (SPIFFE default/ai-agent)"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_auth.user_api_key_auth",
+          "tool": "enforce=admit_mesh · caller default/ai-agent"
+        },
+        "config": {
+          "responsabilidade": "PEP + Consul",
+          "tool": "pdp_auth.py ADMITTED_SERVICES · mesh-timeouts.yaml Lua x-mesh-caller-spiffe"
+        }
+      }
+    },
+    {
+      "id": "CT-02.2",
+      "title": "Rejeição de identidade de workload não autorizada",
+      "status": "PASS",
+      "request": "GET http://localhost:4000/v1/models Authorization: Bearer not-a-mesh-identity (fora da malha, sem SPIFFE)",
+      "response": {
+        "http": 401,
+        "body": {
+          "error": {
+            "message": "LiteLLM Virtual Key expected. Received=not-****tity, expected to start with 'sk-'.",
+            "type": "auth_error",
+            "param": "None",
+            "code": "401"
+          }
+        }
+      },
+      "log": "{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"56bd93a5-1a31-41f1-8047-8102528b6bc9\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"DENY\",\"path\":\"/v1/models\",\"caller\":\"default/litellm-api-gateway\",\"request_id\":\"4d6ec1af-d305-484d-b41e-de10bf171d80\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"fallthrough_litellm_auth\",\"reason\":\"not-in-admitted-services\"}\n11:44:21 - LiteLLM Proxy.stdout:WARNING: auth_exception_handler.py:159 - litellm.proxy.proxy_server.user_api_key_auth(): Exception occured - 401: LiteLLM Virtual Key expected. Received=not-****tity, expected to start with 'sk-'.\nINFO:     127.0.0.1:35090 - \"GET /v1/models HTTP/1.1\" 401 Unauthorized",
+      "config": "pdp_auth.py: SPIFFE fora de {default/web, default/ai-agent} → fallthrough_litellm_auth (UI/SSO). Chamador sem key/SSO não é admit_mesh.",
+      "screenshot": null,
+      "mapping": "ACL de CN = ADMITTED_SERVICES + Service Intentions.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM",
+          "tool": "GET /v1/models (host, sem SPIFFE)"
+        },
+        "log": {
+          "responsabilidade": "PEP / LiteLLM native auth",
+          "tool": "401 Virtual Key expected · fallthrough_litellm_auth"
+        },
+        "config": {
+          "responsabilidade": "PEP",
+          "tool": "litellm-gateway/pdp_auth.py · ADMITTED_SERVICES={default/web, default/ai-agent}"
+        }
+      }
+    },
+    {
+      "id": "CT-02.3",
+      "title": "Rejeição de certificado expirado/revogado",
+      "status": "N/A — evidência de controle",
+      "request": "Não expiramos leaf Connect neste UAT (TTL 72h, CA Vault).",
+      "response": {
+        "provider": "vault",
+        "note": "consul connect ca get-config Provider=vault"
+      },
+      "log": null,
+      "config": "configure.sh passo 8: consul connect ca set-config provider=vault; leaf TTL Connect. Revogação = rotação da CA / intention deny.",
+      "screenshot": null,
+      "mapping": "PKI corporativa do caderno = Vault Connect CA.",
+      "roles": {
+        "request": {
+          "responsabilidade": "Consul Connect CA (Vault)",
+          "tool": "leaf mTLS — não expirado neste UAT"
+        },
+        "log": {
+          "responsabilidade": "Consul / Vault PKI",
+          "tool": "sem handshake de cert expirado capturado"
+        },
+        "config": {
+          "responsabilidade": "Vault Connect CA",
+          "tool": "configure.sh passo 8 · consul connect ca set-config provider=vault"
+        }
+      }
+    },
+    {
+      "id": "CT-02.4",
+      "title": "Bloqueio de bypass do PEP (chamada direta ao especialista/agente)",
+      "status": "PASS",
+      "request": "1) ai-agent → user-mcp.virtual.consul/mcp (intention deny; só litellm-gateway). 2) web → ai-agent direto (intention só litellm-gateway).",
+      "response": {
+        "ai_agent_to_user_mcp": {
+          "obo": {
+            "http": 200,
+            "cached": true,
+            "token_prefix": "eyJhbGciOiJSUzI1"
+          },
+          "direct": {
+            "http": 0,
+            "body": "[Errno 104] Connection reset by peer"
+          }
+        },
+        "web_to_ai_agent": "wget: error getting response: Connection reset by peer\ncommand terminated with exit code 1\n"
+      },
+      "log": null,
+      "config": "deploy-k8s/service-intentions.yaml destination user-mcp sources=[litellm-gateway, consul-mcp-authz]; ai-agent sources=[litellm-gateway]",
+      "screenshot": null,
+      "mapping": "Agente especialista = user-mcp. PEP = LiteLLM. Isolamento = Consul Intentions + mTLS.",
+      "roles": {
+        "request": {
+          "responsabilidade": "Consul Service Intentions",
+          "tool": "bypass: ai-agent→user-mcp e web→ai-agent"
+        },
+        "log": {
+          "responsabilidade": "Envoy sidecar",
+          "tool": "Connection reset by peer (mTLS/intention deny)"
+        },
+        "config": {
+          "responsabilidade": "Consul PEP de rede",
+          "tool": "deploy-k8s/service-intentions.yaml · user-mcp sources=[litellm-gateway]"
+        }
+      }
+    },
+    {
+      "id": "CT-03.1",
+      "title": "Fluxo ponta a ponta ALLOW (consulta list_all_users)",
+      "status": "PASS",
+      "request": "user (users.read) → OBO → LiteLLM PEP → OPA mcp.pep allow → user-mcp SQL",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": false,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"_meta\":{\"assurance\":{\"tool\":\"list_all_users\",\"decision\":\"ALLOW\",\"current_loa\":1,\"required_loa\":1}},\"content\":[{\"type\":\"text\",\"text\":\"[{\\\"email\\\":\\\"amelia.wilson475@example.com\\\",\\\"first_name\\\":\\\"Amelia\\\",\\\"last_name\\\":\\\"Wilson\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.***.**.***\\\"},{\\\"email\\\":\\\"charlotte.anderson799@example.com\\\",\\\"first_name\\\":\\\"Charlotte\\\",\\\"last_name\\\":\\\"Anderson\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"*.***.***.***\\\"},{\\\"email\\\":\\\"henry.davis409@example.com\\\",\\\"first_name\\\":\\\"Henry\\\",\\\"last_name\\\":\\\"Davis\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.***.***.***\\\"},{\\\"email\\\":\\\"mia.williams670@example.com\\\",\\\"first_name\\\":\\\"Mia\\\",\\\"last_name\\\":\\\"Williams\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.**.**.***\\\"},{\\\"email\\\":\\\"noah.miller24@example.com\\\",\\\"first_name\\\":\\\"Noah\\\",\\\"last_name\\\":\\\"Miller\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_card_number\\\":\\\"****-****-****-****\\\",\\\"ip_address\\\":\\\"**.***.***.***\\\"},{\\\"email\\\":\\\"noah.thompson206@example.com\\\",\\\"first_name\\\":\\\"Noah\\\",\\\"last_name\\\":\\\"Thompson\\\",\\\"ssn\\\":\\\"***-**-****\\\",\\\"phone\\\":\\\"+1-***-***-****\\\",\\\"credit_c"
+        }
+      },
+      "log": "p.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"http://opa-service.opa.svc.cluster.local/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"inject_obo_jwt\",\"allow\":true,\"ciba_required\":false,\"catalog_source\":\"default/litellm-gateway\",\"catalog_dest\":\"default/user-mcp\",\"required_scopes\":[\"users.read\"],\"granted_scopes\":[\"users.read\"],\"ciba_tool\":false}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"DENY\",\"path\":\"/v1/models\",\"caller\":\"default/litellm-api-gateway\",\"request_id\":\"4d6ec1af-d305-484d-b41e-de10bf171d80\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"fallthrough_litellm_auth\",\"reason\":\"not-in-admitted-services\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\nTool 'list_all_users' not listed, no validation will be performed\n{\"event\":\"pdp_decision\",\"tool\":\"list_all_users\",\"PDP_Decision\":\"ALLOW\",\"LoA_Level\":1,\"Required_LoA\":1,\"preferred_username\":\"user\",\"reason\":\"allow\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"http://opa-service.opa.svc.cluster.local/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"inject_obo_jwt\",\"allow\":true,\"ciba_required\":false,\"catalog_source\":\"default/litellm-gateway\",\"catalog_dest\":\"default/user-mcp\",\"required_scopes\":[\"users.read\"],\"granted_scopes\":[\"users.read\"],\"ciba_tool\":false}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"3acc617a-cdce-4147-8cd5-a35d5d4fe13b\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/chat/completions\",\"caller\":\"default/ai-agent\",\"request_id\":\"3f5880cc-595a-40b2-8c85-1dc6a56a007a\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/chat/completions\",\"caller\":\"default/ai-agent\",\"request_id\":\"b274d341-fc09-4160-97e8-f6b058fc2937\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/agent/tokens\",\"caller\":\"default/web\",\"request_id\":\"38c25d58-06af-4576-8a5e-aa56cd2c804c\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/v1/agent/assurance\",\"caller\":\"default/web\",\"request_id\":\"9f8d7ce1-adb7-4e60-85b1-db39a1d89d01\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}",
+      "config": "mcp_pep.rego required_scopes.list_all_users={users.read}; ciba_tools não inclui list",
+      "screenshot": "ct-03-1-list.png",
+      "mapping": "LoA=2 do caderno para consulta = LoA=1 lab (leitura sem HITL). CN autorizado = SPIFFE ai-agent via LiteLLM.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM → PDP OPA → runtime user-mcp",
+          "tool": "tools/call list_all_users"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_mcp.pre_mcp_call",
+          "tool": "pdp_decision ALLOW enforce=inject_obo_jwt · list_all_users"
+        },
+        "config": {
+          "responsabilidade": "PDP OPA mcp.pep",
+          "tool": "mcp_pep.rego required_scopes.list_all_users={users.read}"
+        }
+      }
+    },
+    {
+      "id": "CT-03.2",
+      "title": "Latência da decisão PDP (100 consultas)",
+      "status": "PASS",
+      "request": "POST opa-service /v1/data/mcp/pep/decision × 100 (list_all_users, users.read)",
+      "response": {
+        "n": 100,
+        "ok": 100,
+        "avg_ms": 20.24,
+        "p50_ms": 9.271,
+        "p95_ms": 60.716,
+        "max_ms": 195.044,
+        "sample_decision": {
+          "allow": true,
+          "ciba_required": false,
+          "reason": "allow"
+        }
+      },
+      "log": null,
+      "config": "infra/config/opa_policies/mcp_pep.rego package mcp.pep",
+      "screenshot": null,
+      "mapping": "SLA caderno <15ms. Lab local minikube: medir avg/p95 reais (não é APIM dedicado).",
+      "sla_note": "Caderno pede <15ms; registrar valor medido. PASS de funcionalidade = 100% ALLOW; SLA é evidência, não gate do lab.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PDP OPA opa-server",
+          "tool": "POST /v1/data/mcp/pep/decision ×100 · tool list_all_users"
+        },
+        "log": {
+          "responsabilidade": "PDP OPA",
+          "tool": "result.allow=true reason=allow (100/100)"
+        },
+        "config": {
+          "responsabilidade": "PDP",
+          "tool": "infra/config/opa_policies/mcp_pep.rego package mcp.pep"
+        }
+      }
+    },
+    {
+      "id": "CT-04.1",
+      "title": "Negação por falta de perfil (reader tenta create_user)",
+      "status": "PASS",
+      "request": "OBO scope=users.read + tools/call create_user (exige users.write)",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": true,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Error: Tool 'create_user' requires additional OAuth scope.\"}],\"isError\":true}}\r\n\r\n"
+        }
+      },
+      "log": "pdp_mcp.PepDenied: Tool 'create_user' requires additional OAuth scope.\nException: Tool 'create_user' requires additional OAuth scope.",
+      "config": "mcp_pep.rego required_scopes.create_user={users.write}; token-exchange authorization.py groups reader ⊄ write",
+      "screenshot": null,
+      "mapping": "Clientes_Standard = grupo reader. VIP_Exclusivo = create_user.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM + PDP OPA",
+          "tool": "tools/call create_user com OBO users.read"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_mcp.pre_mcp_call",
+          "tool": "PepDenied insufficient_scope · create_user"
+        },
+        "config": {
+          "responsabilidade": "PDP",
+          "tool": "mcp_pep.rego required_scopes.create_user={users.write}"
+        }
+      }
+    },
+    {
+      "id": "CT-04.2",
+      "title": "Negação por JWT expirado",
+      "status": "PASS",
+      "request": "tools/call com JWT cujo exp foi posto no passado (assinatura deixa de conferir OU ExpiredSignatureError)",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": true,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Error: Token is invalid: Signature verification failed\"}],\"isError\":true}}\r\n\r\n"
+        }
+      },
+      "log": "    raise PepDenied(f\"Token is invalid: {exc}\", error=\"invalid_token\") from exc\npdp_mcp.PepDenied: Token is invalid: Signature verification failed",
+      "config": "pdp_mcp.py except jwt.ExpiredSignatureError → PepDenied error=expired_token",
+      "screenshot": null,
+      "mapping": "PEP recusa antes do PDP se exp/assinatura falham.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM",
+          "tool": "tools/call list_all_users com JWT exp no passado"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_mcp KeycloakJwtValidator",
+          "tool": "PepDenied invalid_token / Signature verification failed"
+        },
+        "config": {
+          "responsabilidade": "PEP",
+          "tool": "pdp_mcp.py jwt.ExpiredSignatureError | InvalidSignatureError"
+        }
+      }
+    },
+    {
+      "id": "CT-04.3",
+      "title": "Negação por ação proibida entre agentes (fora do catálogo)",
+      "status": "PASS",
+      "request": "tools/call excluir_conta (não está em data.rules[default/litellm-gateway][default/user-mcp].allow)",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": false,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Error: Tool 'excluir_conta' not found\"}],\"isError\":true}}\r\n\r\n"
+        }
+      },
+      "log": "{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"a2ca96b4-c416-4167-bfd5-ca2f3cae8d57\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\nTool 'excluir_conta' not listed, no validation will be performed\n11:44:34 - LiteLLM:ERROR: server.py:1162 - HTTPException in MCP tool call: 404: Tool 'excluir_conta' not found",
+      "config": "Vault KV opa-policies/mcp-authz/catalog + mcp_pep.rego reason=catalog",
+      "screenshot": null,
+      "mapping": "Action=ExcluirConta do caderno = tool fora do allow-list (ou delete_user_by_email se removida do catálogo).",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM MCP gateway",
+          "tool": "tools/call excluir_conta (fora do catálogo / da lista MCP)"
+        },
+        "log": {
+          "responsabilidade": "PEP LiteLLM MCP",
+          "tool": "HTTPException 404 Tool 'excluir_conta' not found"
+        },
+        "config": {
+          "responsabilidade": "PDP catálogo + LiteLLM MCP",
+          "tool": "opa-policies/mcp-authz/catalog · mcp_pep.rego reason=catalog"
+        }
+      }
+    },
+    {
+      "id": "CT-05.1",
+      "title": "PDP identifica LoA insuficiente (CIBA required)",
+      "status": "PASS",
+      "request": "POST /v1/data/mcp/pep/decision tool=create_user scope=users.write",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": true,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "opa": {
+          "http": 200,
+          "body": {
+            "result": {
+              "allow": true,
+              "ciba_required": true,
+              "reason": "step-up"
+            }
+          }
+        }
+      },
+      "log": null,
+      "config": "mcp_pep.rego ciba_tools contains create_user → reason=step-up ciba_required=true",
+      "screenshot": "ct-05-1-ciba-pending.png",
+      "mapping": "required_loa=3 do caderno = LoA=2 CIBA no lab. STEP_UP_REQUIRED = ciba_required.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PDP OPA mcp.pep",
+          "tool": "POST /v1/data/mcp/pep/decision · tool create_user"
+        },
+        "log": {
+          "responsabilidade": "PDP OPA",
+          "tool": "allow=true ciba_required=true reason=step-up"
+        },
+        "config": {
+          "responsabilidade": "PDP",
+          "tool": "mcp_pep.rego ciba_tools={create_user, delete_user_by_email}"
+        }
+      }
+    },
+    {
+      "id": "CT-05.2",
+      "title": "Step-up CIBA com sucesso (Approve)",
+      "status": "PASS",
+      "request": "create_user bloqueia no PEP; humano Approve em :8082 /approve-latest",
+      "response": {
+        "pending": [
+          {
+            "id": "0d9325c8-8cac-4ee4-b207-a3622f931894",
+            "login_hint": "writer",
+            "binding_message": "create_user",
+            "scope": "openid users.write profile roles",
+            "status": "pending"
+          }
+        ],
+        "approve_http": 200,
+        "approve": {
+          "id": "0d9325c8-8cac-4ee4-b207-a3622f931894",
+          "callback_status": 200,
+          "detail": "{\"type\":\"application\",\"subtype\":\"json\",\"parameters\":{},\"wildcardSubtype\":false,\"wildcardType\":false}",
+          "ok": true
+        },
+        "mcp": {
+          "obo": {
+            "http": 200,
+            "cached": true,
+            "token_prefix": "eyJhbGciOiJSUzI1"
+          },
+          "mcp": {
+            "http": 200,
+            "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"1 validation error for call[create_user]\\nuser.email\\n  value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email. [type=value_error, input_value='uat-ok-1789818274@example.test', input_type=str]\"}],\"isError\":true}}\r\n\r\n"
+          }
+        }
+      },
+      "log": "[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] pending CIBA login_hint=writer binding=create_user\n[ciba-channel] \"POST /ciba/authn HTTP/1.1\" 201 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"POST /approve-latest HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -",
+      "config": "pdp_mcp.py CibaClient poll Keycloak; ciba-channel/server.py /approve",
+      "screenshot": "ct-05-2-ciba.png",
+      "mapping": "Biometria do caderno = Approve no canal CIBA.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM CibaClient + canal HITL",
+          "tool": "tools/call create_user + POST /approve-latest"
+        },
+        "log": {
+          "responsabilidade": "ciba-channel + PEP pdp_mcp",
+          "tool": "pending CIBA login_hint=writer binding=create_user · approve 200"
+        },
+        "config": {
+          "responsabilidade": "PEP + HITL",
+          "tool": "pdp_mcp.py CibaClient · ciba-channel/server.py /approve"
+        }
+      }
+    },
+    {
+      "id": "CT-05.3",
+      "title": "Re-tentativa/execução após step-up",
+      "status": "PASS",
+      "request": "Mesma tools/call create_user após JWT CIBA injetado pelo PEP",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": true,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"1 validation error for call[create_user]\\nuser.email\\n  value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email. [type=value_error, input_value='uat-ok-1789818274@example.test', input_type=str]\"}],\"isError\":true}}\r\n\r\n"
+        }
+      },
+      "log": "[09/19/26 11:44:40] Error validating tool 'create_user'                         \n                    ValidationError: 1 validation error for call[create_user]   \n{\"auth_scope\": \"openid profile users.write\", \"function\": \"_stream_response\", \"host_ip\": \"10.244.0.59\", \"hostname\": \"user-mcp-76b6c84bd8-wrj9r\", \"level\": \"DEBUG\", \"line_number\": 315, \"logger\": \"sse_starlette.sse\", \"message\": \"user=writer agent=ai-agent chunk: b'event: message\\\\r\\\\ndata: {\\\"jsonrpc\\\":\\\"2.0\\\",\\\"id\\\":1,\\\"result\\\":{\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"1 validation error for call[create_user]\\\\\\\\nuser.email\\\\\\\\n  value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email. [type=value_error, input_value=\\\\'uat-ok-1789818274@example.test\\\\', input_type=str]\\\"}],\\\"isError\\\":true}}\\\\r\\\\n\\\\r\\\\n'\", \"method_name\": \"_stream_response\", \"module\": \"sse\", \"preferred_username\": \"writer\", \"process_id\": 1, \"request_id\": \"d841dc80-2346-429e-8363-a6e625101218\", \"timestamp\": \"2026-09-19T11:44:40.522131+00:00\"}",
+      "config": "pdp_mcp extra_headers Authorization = JWT CIBA → user-mcp runtime",
+      "screenshot": "ct-03-1-list.png",
+      "mapping": "Operação efetuada pelo especialista (user-mcp) após LoA elevado.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP inject_ciba_jwt → runtime user-mcp",
+          "tool": "tools/call create_user (pós-Approve)"
+        },
+        "log": {
+          "responsabilidade": "runtime user-mcp tools/users.py",
+          "tool": "create_user chegou ao runtime (validação de e-mail depois do PEP)"
+        },
+        "config": {
+          "responsabilidade": "PEP + runtime",
+          "tool": "pdp_mcp extra_headers Authorization · user-mcp/tools/users.py create_user"
+        }
+      }
+    },
+    {
+      "id": "CT-05.4",
+      "title": "Cancelamento do step-up pelo usuário",
+      "status": "PASS",
+      "request": "create_user + POST /deny/{id} no ciba-channel",
+      "response": {
+        "pending": [
+          {
+            "id": "43557966-9c90-4d66-90c1-3a5c994e9d5a",
+            "login_hint": "writer",
+            "binding_message": "create_user",
+            "scope": "openid users.write profile roles",
+            "status": "pending"
+          }
+        ],
+        "deny_http": 200,
+        "deny": {
+          "id": "43557966-9c90-4d66-90c1-3a5c994e9d5a",
+          "callback_status": 200,
+          "detail": "{\"type\":\"application\",\"subtype\":\"json\",\"parameters\":{},\"wildcardSubtype\":false,\"wildcardType\":false}",
+          "ok": true
+        },
+        "mcp": {
+          "obo": {
+            "http": 200,
+            "cached": true,
+            "token_prefix": "eyJhbGciOiJSUzI1"
+          },
+          "mcp": {
+            "http": 200,
+            "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Error: CIBA was denied or expired. Approve the request at http://localhost:8093 and retry.\"}],\"isError\":true}}\r\n\r\n"
+          }
+        }
+      },
+      "log": "[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] pending CIBA login_hint=writer binding=create_user\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] pending CIBA login_hint=writer binding=create_user\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"POST /deny/43557966-9c90-4d66-90c1-3a5c994e9d5a HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -\n[ciba-channel] \"GET /pending HTTP/1.1\" 200 -",
+      "config": "ciba-channel/server.py status CANCELLED; PEP aborta poll sem executar SQL",
+      "screenshot": "ct-05-4-deny.png",
+      "mapping": "Cancelar biometria = Deny CIBA.",
+      "roles": {
+        "request": {
+          "responsabilidade": "HITL ciba-channel + PEP",
+          "tool": "tools/call create_user + POST /deny/{id}"
+        },
+        "log": {
+          "responsabilidade": "ciba-channel + PEP pdp_mcp",
+          "tool": "CANCELLED · pdp_decision DENY create_user"
+        },
+        "config": {
+          "responsabilidade": "HITL + PEP",
+          "tool": "ciba-channel/server.py CANCELLED · PEP aborta poll (sem SQL)"
+        }
+      }
+    },
+    {
+      "id": "CT-06.1",
+      "title": "Logs de auditoria e não-repúdio",
+      "status": "PASS",
+      "request": "tools/call anteriores geram print() JSON no stdout do LiteLLM",
+      "response": {
+        "sample": {
+          "event": "pdp_decision",
+          "PDP_Decision": "DENY",
+          "tool": "create_user",
+          "error": "deny",
+          "request_id": "-",
+          "pep": "litellm-gateway/pdp_mcp.pre_mcp_call",
+          "pdp": "opa-server",
+          "pdp_package": "mcp.pep",
+          "pdp_path": "/v1/data/mcp/pep/decision",
+          "pdp_policy": "mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}",
+          "enforce": "deny",
+          "reason": "CIBA was denied or expired. Approve the request at http://localhost:8093 and retry."
+        },
+        "required_present": [
+          "event",
+          "PDP_Decision",
+          "enforce",
+          "pdp",
+          "pep"
+        ]
+      },
+      "log": "ers.write\"],\"granted_scopes\":[\"users.write\"],\"ciba_tool\":true}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"ALLOW\",\"path\":\"/mcp/user_mcp\",\"caller\":\"default/ai-agent\",\"request_id\":\"d576883f-4387-4d96-9980-a03d2f5d5d7f\",\"pep\":\"litellm-gateway/pdp_auth.user_api_key_auth\",\"pdp\":\"litellm-gateway/pdp_auth.decide\",\"pdp_package\":\"pdp_auth\",\"pdp_policy\":\"SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES=default/ai-agent,default/web; otherwise fall through to LiteLLM SSO/virtual-key\",\"enforce\":\"admit_mesh\",\"reason\":\"admitted-service\"}\n{\"event\":\"pdp_decision\",\"tool\":\"create_user\",\"PDP_Decision\":\"STEP_UP_REQUIRED\",\"LoA_Level\":1,\"Required_LoA\":2,\"preferred_username\":\"writer\",\"reason\":\"step-up\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"http://opa-service.opa.svc.cluster.local/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"await_ciba\",\"allow\":true,\"ciba_required\":true,\"catalog_source\":\"default/litellm-gateway\",\"catalog_dest\":\"default/user-mcp\",\"required_scopes\":[\"users.write\"],\"granted_scopes\":[\"users.write\"],\"ciba_tool\":true}\n{\"event\":\"pdp_decision\",\"tool\":\"create_user\",\"PDP_Decision\":\"DENY\",\"LoA_Level\":1,\"Required_LoA\":2,\"preferred_username\":\"writer\",\"reason\":\"step-up\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"http://opa-service.opa.svc.cluster.local/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"deny\",\"allow\":true,\"ciba_required\":true,\"catalog_source\":\"default/litellm-gateway\",\"catalog_dest\":\"default/user-mcp\",\"required_scopes\":[\"users.write\"],\"granted_scopes\":[\"users.write\"],\"ciba_tool\":true}\n{\"event\":\"pdp_decision\",\"PDP_Decision\":\"DENY\",\"tool\":\"create_user\",\"error\":\"deny\",\"request_id\":\"-\",\"pep\":\"litellm-gateway/pdp_mcp.pre_mcp_call\",\"pdp\":\"opa-server\",\"pdp_package\":\"mcp.pep\",\"pdp_path\":\"/v1/data/mcp/pep/decision\",\"pdp_policy\":\"mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) + required_scopes[tool] subset of JWT scope + ciba_tools={create_user,delete_user_by_email}\",\"enforce\":\"deny\",\"reason\":\"CIBA was denied or expired. Approve the request at http://localhost:8093 and retry.\"}",
+      "config": "pdp_mcp.py _log_pdp_decision campos PDP_Decision, LoA_Level, pep, pdp, enforce, request_id",
+      "screenshot": "ct-06-1-audit.png",
+      "mapping": "TransactionID≈request_id; UserID≈preferred_username; Workload_mTLS_CN≈SPIFFE; PDP_Decision_ID≈reason+package.",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM auditoria",
+          "tool": "tools/call (qualquer) emite pdp_decision JSON"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_mcp._log_pdp_decision",
+          "tool": "event=pdp_decision campos PDP_Decision, LoA_Level, pep, pdp, enforce"
+        },
+        "config": {
+          "responsabilidade": "PEP",
+          "tool": "litellm-gateway/pdp_mcp.py _log_pdp_decision / print() stdout"
+        }
+      }
+    },
+    {
+      "id": "CT-06.2",
+      "title": "Fail-closed do PEP se o PDP estiver inacessível",
+      "status": "PASS",
+      "request": "kubectl scale opa-server --replicas=0; tools/call list_all_users; scale back",
+      "response": {
+        "obo": {
+          "http": 200,
+          "cached": true,
+          "token_prefix": "eyJhbGciOiJSUzI1"
+        },
+        "mcp": {
+          "http": 200,
+          "body": "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Error: OPA PDP rejected the query (status=503)\"}],\"isError\":true}}\r\n\r\n"
+        }
+      },
+      "log": "    raise PepDenied(\npdp_mcp.PepDenied: OPA PDP rejected the query (status=503)\nException: OPA PDP rejected the query (status=503)",
+      "config": "pdp_mcp.py OpaClient.decide except HTTPError → PepDenied error=opa_unreachable",
+      "screenshot": null,
+      "mapping": "HTTP 503/500 do caderno = guardrail LiteLLM bloqueia tools/call (fail-closed).",
+      "roles": {
+        "request": {
+          "responsabilidade": "PEP LiteLLM fail-closed",
+          "tool": "tools/call list_all_users com opa-server replicas=0"
+        },
+        "log": {
+          "responsabilidade": "PEP pdp_mcp OpaClient.decide",
+          "tool": "PepDenied OPA PDP rejected status=503 · list_all_users"
+        },
+        "config": {
+          "responsabilidade": "PEP",
+          "tool": "pdp_mcp.py OpaClient.decide → error=opa_unreachable"
+        }
+      }
+    }
+  ]
+}
