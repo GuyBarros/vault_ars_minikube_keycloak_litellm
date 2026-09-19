@@ -44,10 +44,10 @@ def register_tools(mcp: FastMCP, repo: UserRepository) -> None:
     enforce them on every invocation (defense in depth — agents must pass a
     correctly-scoped OBO token, and this server independently verifies it).
 
-    Writes may additionally block on a human-in-the-loop CIBA approval —
-    that gate lives in storage/postgres_repo.py (driven by a
-    ciba/<action>/<user> Vault ACL policy switch), transparent to the tool
-    call here: the call simply blocks until approved/denied/timed out.
+    Writes may additionally block on a human-in-the-loop CIBA approval.
+    In USER_MCP_PEP_MODE=local that gate lives in storage/postgres_repo.py
+    (driven by a ciba/<action>/<user> Vault ACL policy switch). In runtime
+    mode LiteLLM already completed CIBA and this dispatcher only executes.
     """
 
     for tool_name, scopes in TOOL_SCOPE_REQUIREMENTS.items():

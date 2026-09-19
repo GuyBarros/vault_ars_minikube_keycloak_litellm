@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     allow_unauth_discovery: bool = Field(
         default=False, alias="USER_MCP_ALLOW_UNAUTH_DISCOVERY"
     )
+    # local = this process is the PEP (JWT/scope/CIBA). runtime = LiteLLM
+    # already decided; extract the inbound bearer without JWKS and skip
+    # scope/CIBA. Vault database/creds + Transform stay here.
+    pep_mode: Literal["local", "runtime"] = Field(
+        default="local", alias="USER_MCP_PEP_MODE"
+    )
 
     # Storage backend
     user_backend: Literal["file", "postgres"] = Field(default="file", alias="USER_BACKEND")
@@ -176,6 +182,7 @@ def load_settings() -> Settings:
         keycloak_audience=settings.audience or None,
         keycloak_jwks_url=settings.effective_jwks_url or None,
         bypass_auth=settings.bypass_auth,
+        pep_mode=settings.pep_mode,
         allow_unauth_discovery=settings.allow_unauth_discovery,
         ciba_keycloak_url=settings.ciba_keycloak_url or None,
         ciba_approve_url=settings.ciba_approve_url,

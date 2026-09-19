@@ -133,7 +133,8 @@ vault kv put opa-policies/bundle \
   code_safety.rego=@"$INFRA_DIR/config/opa_policies/code_safety.rego" \
   patterns.rego=@"$INFRA_DIR/config/opa_policies/patterns.rego" \
   pii_filter.rego=@"$INFRA_DIR/config/opa_policies/pii_filter.rego" \
-  prompt_injection.rego=@"$INFRA_DIR/config/opa_policies/prompt_injection.rego"
+  prompt_injection.rego=@"$INFRA_DIR/config/opa_policies/prompt_injection.rego" \
+  mcp_pep.rego=@"$INFRA_DIR/config/opa_policies/mcp_pep.rego"
 
 vault policy write agent-role-identity-policy - <<-EOT
 	path "identity/oidc/token/agent-role" {
@@ -143,6 +144,9 @@ vault policy write agent-role-identity-policy - <<-EOT
 
 vault policy write opa - <<-EOT
 	path "opa-policies/data/bundle" {
+	  capabilities = ["read"]
+	}
+	path "opa-policies/data/mcp-authz/catalog" {
 	  capabilities = ["read"]
 	}
 	EOT
@@ -180,6 +184,16 @@ jq -n --arg aud "$K8S_SA_AUDIENCE" \
 jq -n --arg aud "$K8S_SA_AUDIENCE" \
   '{role_type: "jwt", bound_audiences: [$aud], bound_subject: "system:serviceaccount:default:consul-mcp-authz", claim_mappings: {"/kubernetes.io/namespace": "namespace"}, token_explicit_max_ttl: 0, token_period: 1800, token_policies: ["default", "consul-mcp-authz"], token_type: "service", user_claim: "sub", user_claim_json_pointer: true}' \
   | vault write auth/k8s_jwt/role/consul-mcp-authz -
+
+vault policy write litellm-gateway - <<-EOT
+	path "identity/oidc/token/agent-role" {
+	  capabilities = ["read"]
+	}
+	EOT
+
+jq -n --arg aud "$K8S_SA_AUDIENCE" \
+  '{role_type: "jwt", bound_audiences: [$aud], bound_subject: "system:serviceaccount:default:litellm-gateway", claim_mappings: {"/kubernetes.io/namespace": "namespace"}, token_explicit_max_ttl: 0, token_period: 1800, token_policies: ["default", "litellm-gateway"], token_type: "service", user_claim: "sub", user_claim_json_pointer: true}' \
+  | vault write auth/k8s_jwt/role/litellm-gateway -
 
 echo "=== 4. Vault: identity OIDC issuer + agent-role identity token ==="
 vault read identity/oidc/key/default >/dev/null 2>&1 || \
@@ -263,10 +277,8 @@ printf '%s\n' "$token_secret_id" > "$GEN_DIR/consul_mcp_authz_token"
 vault kv put opa-policies/consul/mcp-authz-token token="$token_secret_id"
 
 echo "=== 7. Vault: seed initial OPA MCP authz catalog ==="
-# Seeds the rule catalog read by opa-mcp-authz at startup via Vault Agent.
-# A missing catalog causes Vault Agent to spin indefinitely and OPA to never
-# start, which blocks every request to user-mcp (Envoy ext-authz, fail-closed).
-# consul-mcp-authz may update this KV after startup; this is just the initial value.
+# Seeds the rule catalog loaded by opa-server (data.catalog) and consulted
+# by LiteLLM pdp_mcp.py. consul-mcp-authz may update this KV after startup.
 vault kv put opa-policies/mcp-authz/catalog - <<-EOT
 	{"rules": {"default/litellm-gateway": {"default/user-mcp": {"allow": ["list_all_users", "search_users_by_first_name", "update_user_by_email", "create_user", "delete_user_by_email"]}}}}
 	EOT

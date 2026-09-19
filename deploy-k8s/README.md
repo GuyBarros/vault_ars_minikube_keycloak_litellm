@@ -1,3 +1,9 @@
+# Deploy Kubernetes
+
+Lab local: `make up` / `make deploy` em [`infra/local-minikube/`](../infra/local-minikube/). Papéis e arquivos: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
+
+Este README é o apply **manual** (AWS/EKS ou debug). No minikube **não** ligue `ext_authz` no `user-mcp`: o catálogo é enforce no LiteLLM → OPA `mcp.pep`. `service-defaults-user-mcp.yaml` só tem timeout HTTP.
+
 ## Deploy Consul configurations
 ```
 kubectl apply -f deploy-k8s/proxy-defaults.yaml
@@ -35,18 +41,15 @@ kubectl create secret generic user-mcp-env \
 kubectl apply -f deploy-k8s/user-mcp.yaml
 ```
 
-## Wire user-mcp's Envoy ext_authz at opa-mcp-authz
+## user-mcp ServiceDefaults (timeouts; sem ext_authz)
 
-Applies a Consul `ServiceDefaults` with the `builtin/ext-authz` extension
-on user-mcp's inbound sidecar, pointing at the `opa-mcp-authz` gRPC
-service (`failureModeAllow: false`, `statusOnError: 403`). The
-`user-mcp` block in `service-intentions.yaml` already allows `ai-agent`
-and `consul-mcp-authz` as sources.
+No lab o inbound de `user-mcp` **não** usa `builtin/ext-authz`. O YAML só define `protocol: http` e timeout longo (CIBA). Catálogo: LiteLLM `pdp_mcp.py` + opa-server.
 
 ```
 kubectl apply -f deploy-k8s/service-defaults-user-mcp.yaml
-kubectl rollout restart deploy/user-mcp
 ```
+
+O pod `opa-mcp-authz` ainda sobe para o `consul-mcp-authz` editar o KV `opa-policies/mcp-authz/catalog`.
 
 ## Deploy ai-agent app
 ```

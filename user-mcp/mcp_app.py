@@ -20,7 +20,7 @@ def build_mcp_app(settings: Settings) -> tuple[FastMCP, UserRepository]:
     user-management tools. Returns the FastMCP instance plus the repo so the
     ASGI entrypoint can drive lifespan startup/shutdown around it."""
 
-    configure_bypass(settings.bypass_auth)
+    configure_bypass(settings.bypass_auth or settings.pep_mode == "runtime")
     repo = build_repository(settings)
 
     @asynccontextmanager

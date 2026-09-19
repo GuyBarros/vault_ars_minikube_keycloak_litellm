@@ -6,33 +6,35 @@ This repository contains a demo environment that combines Keycloak, HashiCorp Va
 
 ![Agentic security architecture (products)](./documentation/agent_control_plane/agentic-security-architecture-products-light.png)
 
-The core demo flow is:
+The core demo flow (laboratório minikube — LiteLLM é o PEP de IA):
 
 ```mermaid
 flowchart LR
     user[User]
     web[Web App]
+    gw[LiteLLM PEP]
     exchange["token-exchange<br>OBO"]
     verify[Keycloak]
-    mcp[user-mcp]
+    mcp[user-mcp runtime]
     vault[Vault]
     db[Database]
+    opa["OPA mcp.pep PDP"]
+    llm[Ollama]
 
-    subgraph boundary[POLICY BOUNDARY]
-        direction TB
-        agent["AI Agent<br>OBO token"]
-        policy["Policy Engine<br>OPA, wxg"]
-        agent -.-> policy
-    end
-
-    user -.-> web
-    web -.-> policy
-    policy -. Intent / Tool / Required Scope .-> exchange
-    exchange -.-> verify
-    policy -.-> mcp
-    mcp -.-> vault
-    vault -.-> db
+    user --> web
+    web --> gw
+    gw --> agent[AI Agent]
+    agent --> exchange
+    exchange --> verify
+    agent --> gw
+    gw --> llm
+    gw -->|"tools/call"| opa
+    gw --> mcp
+    mcp --> vault
+    vault --> db
 ```
+
+Arquitetura, pastas, tools e scripts: [`documentation/arquitetura-detalhada.md`](./documentation/arquitetura-detalhada.md). Fluxo e papéis: [`documentation/fluxo-e-responsabilidades.md`](./documentation/fluxo-e-responsabilidades.md).
 
 At a platform level:
 
@@ -40,17 +42,18 @@ At a platform level:
 2. The runtime platform provides the workload's native identity to the agentic workload.
 3. HashiCorp Vault converts that platform-native identity into an OIDC-conformant identity token for the workload, giving the agent a unique non-human identity without application code changes.
 4. The token-exchange service uses the user token and the Vault-issued workload identity token to obtain delegated credentials for downstream access.
-5. HashiCorp Consul provides the service mesh and transparent runtime enforcement layer for agent-facing traffic. In the local minikube flow, Vault is the mesh's certificate authority (Consul's Connect CA), and Vault and Postgres are themselves mesh services. The Envoy sidecar delegates request/response inspection to `opa-gov-api` (OPA) or `wx-gov-api` (watsonx.governance) via a thin Lua filter.
-6. HashiCorp Vault also acts as the secure policy distribution layer for OPA-backed controls, while pluggable policy engines such as OPA and watsonx.governance evaluate requests and responses without requiring changes to the agent application code. Policies themselves are authored and tested in `opa-policy-studio`.
+5. HashiCorp Consul is the API Gateway (norte-sul) and the mTLS/SPIFFE mesh (leste-oeste). In the local minikube flow, Vault is the mesh's certificate authority (Connect CA), and Vault and Postgres are themselves mesh services.
+6. **LiteLLM** is the PEP + AI Gateway (SPIFFE admission, MCP `tools/call`, optional content guardrail). **OPA `opa-server` (`mcp.pep`)** is the PDP for catalog, scope, and CIBA. Vault stores the OPA bundle and MCP catalog and issues secrets (`database/creds`, Transform, actor token). The Lua filter on `ai-agent` is **not** applied by `make deploy`.
 
 ### Runtime controls enforced by the platform
 
-Consul, Vault, and the pluggable policy engines enforce runtime controls around the agent without changing application code. In practice, that means the platform can:
+Consul (rede), LiteLLM+OPA (IA), and Vault (segredos) enforce runtime controls without changing the agent application code. In the lab that means:
 
-- block prompt injection and malicious instruction override attempts before the agent acts on them
-- stop unsafe tool usage or unauthorized code-execution patterns before they reach downstream systems
-- detect and mask PII or other sensitive data in prompts and responses
-- prevent sensitive data leakage, prompt leakage, and other policy-violating outputs before they leave the runtime
+- admit only mesh identities (`default/web`, `default/ai-agent`) at the AI gateway
+- allow or deny MCP tools from the Vault KV catalog and `users.read` / `users.write` scopes
+- step-up with Keycloak CIBA for `create_user` and `delete_user_by_email`
+- mint per-request Postgres credentials and mask PII on reads (Transform) unless the caller is `admin`
+- optionally block prompt injection via the LiteLLM content guardrail → `opa-gov-api`
 
 ### Architecture diagrams
 
@@ -69,16 +72,17 @@ The main repo components are:
 | [`web-app/`](./web-app/) | Next.js 15 (App Router) + React 19 + TypeScript UI styled with the IBM Carbon Design System; handles Keycloak OAuth login, streaming AI chat, and the subject / actor / OBO token inspector |
 | [`web-app-deprecated/`](./web-app-deprecated/) | Archived Streamlit version of the web app, kept for reference only |
 | [`ai-agent/`](./ai-agent/) | FastAPI-based AI agent runtime that uses delegated identity and executes agent tools |
-| [`litellm-gateway/`](./litellm-gateway/) | LiteLLM AI gateway config (PEP/PDP) between `web-app`, `ai-agent`, the LLM and `user-mcp`: a `custom_auth` hook that admits `ai-agent` and `web` by their Consul mesh (SPIFFE) identity instead of a shared key, an OPA content guardrail, and an MCP gateway to `user-mcp` |
-| [`user-mcp/`](./user-mcp/) | FastMCP server exposing user-management tools over streamable HTTP; validates the OBO/CIBA JWT against Keycloak JWKS, enforces a per-tool `users.read` / `users.write` scope contract, gates writes on a Vault-policy-driven CIBA approval, and mints per-request Vault-issued Postgres credentials via Vault's OAuth Resource Server |
+| [`litellm-gateway/`](./litellm-gateway/) | PEP + AI Gateway (ConfigMap): SPIFFE `custom_auth`, CustomGuardrail `pdp_mcp.py` (OPA `mcp.pep` + CIBA), content guardrail, MCP nativo para `user-mcp` |
+| [`user-mcp/`](./user-mcp/) | FastMCP runtime (`USER_MCP_PEP_MODE=runtime`): tools de usuários, SQL, `database/creds` e Transform. JWT/scope/CIBA ficam no LiteLLM |
 | [`token-exchange/`](./token-exchange/) | FastAPI identity broker that performs Keycloak on-behalf-of (RFC 8693) token exchange |
 | [`keycloak-providers/`](./keycloak-providers/) | Custom Keycloak protocol-mapper SPI (RAR + actor-claim injection) baked into the Keycloak image — see [KEYCLOAK_REALM_SETUP.md](./KEYCLOAK_REALM_SETUP.md) |
 | [`ciba-channel/`](./ciba-channel/) | Minimal HTTP approval webhook backing Keycloak's CIBA authentication channel |
-| [`opa-gov-api/`](./opa-gov-api/) | FastAPI wrapper in front of OPA exposing `POST /evaluate` (prompt-injection + unsafe-code check) and `POST /mask` (PII masking), so the Envoy Lua filter can stay thin |
+| [`opa-gov-api/`](./opa-gov-api/) | FastAPI wrapper in front of OPA: `POST /evaluate` (prompt-injection + unsafe-code) and `POST /mask` (PII). LiteLLM guardrail chama `/evaluate` |
 | [`opa-policy-studio/`](./opa-policy-studio/) | React + TypeScript + Vite frontend-only PoC for authoring, listing, and evaluating OPA policies from the browser (Monaco editor, Rego highlighting, built-in Prompt Injection / Code Safety / PII test presets) |
-| [`opa-mcp-auth/`](./opa-mcp-auth/) | Data-driven MCP tool authorization: Rego policy + Vault KV v2 catalog of `(source-agent → destination-MCP → allowed tools)` pairs, hot-reloaded into OPA by a vault-agent sidecar with no pod restart on rule changes |
-| [`consul-mcp-authz/`](./consul-mcp-authz/) | Operator-facing layer for the `opa-mcp-auth` catalog: FastAPI REST service (CRUD + history/rollback + live MCP `tools/list` discovery) and a Next.js operator console (Rules list, View/Edit, New Rule, History) packaged in one image |
-| [`wx-gov-api/`](./wx-gov-api/) | watsonx.governance policy engine integration for runtime guardrails |
+| [`opa-mcp-auth/`](./opa-mcp-auth/) | Seed + Rego legado `ext_authz`. O catálogo KV ainda é a fonte; no lab quem consulta é o **opa-server** (`mcp.pep`), não o sidecar do MCP |
+| [`consul-mcp-authz/`](./consul-mcp-authz/) | UI/API operador do catálogo Vault `opa-policies/mcp-authz/catalog` |
+| [`vault-log/`](./vault-log/) | Viewer SSE dos hops (`make hop-logs` → http://127.0.0.1:8753/) |
+| [`wx-gov-api/`](./wx-gov-api/) | watsonx.governance policy engine (não é o PDP do `make up`) |
 | [`infra/`](./infra/) | Terraform and AMI build workflow for provisioning the demo platform, including Vault and Consul foundations |
 | [`deploy-k8s/`](./deploy-k8s/) | Kubernetes, Consul, and policy-enforcement deployment manifests plus deployment order |
 | [`documentation/agent_control_plane/`](./documentation/agent_control_plane/) | Product-level architecture diagrams for the agentic security control plane |
@@ -93,7 +97,7 @@ The main repo components are:
 - Unique non-human identity for agentic workloads using platform-native identity and a HashiCorp Vault OIDC identity token, automatically injected by the platform into agentic workloads without requiring code changes
 - Agentic runtime security with HashiCorp Consul, HashiCorp Vault, and pluggable policy engines (OPA and watsonx.governance) without requiring code changes, including prompt injection prevention, PII masking, sensitive data filtering, and unsafe action blocking
 - Keycloak-authenticated user access combined with delegated on-behalf-of token exchange for downstream agent actions
-- Human-in-the-loop approval for sensitive agent actions via Keycloak CIBA (Client-Initiated Backchannel Authentication): writes gated by a Vault ACL policy switch block until the caller approves on a separate device
+- Human-in-the-loop approval for `create_user` / `delete_user_by_email` via Keycloak CIBA: OPA `ciba_tools` decides; LiteLLM polls; humano em `:8082`
 - Deployment of the demo services into Kubernetes with Consul service mesh configuration and observability services
 
 ## Provision the demo environment
@@ -118,14 +122,15 @@ The documented deployment flow covers:
 
 1. Consul base configuration
 2. `token-exchange`
-3. `user-mcp`
-4. `ai-agent`
-5. `web-app` (Next.js + Carbon)
-6. OPA deployment (plus `opa-gov-api` as the Envoy-facing HTTP front end)
-7. `wx-gov-api` deployment
-8. `opa-mcp-authz` pilot — data-driven MCP tool authorization (policy ConfigMap, OPA Deployment with vault-agent sidecar, `user-mcp` ext_authz wiring)
-9. `consul-mcp-authz` — catalog API + operator UI for managing the MCP authorization catalog
-10. Service intentions
+3. `user-mcp` (runtime; sem ext_authz)
+4. LiteLLM PEP + `opa-server` (`mcp.pep`) + `opa-gov-api`
+5. `ai-agent` (MCP e LLM via LiteLLM)
+6. `web-app` (Next.js + Carbon)
+7. `ciba-channel`
+8. `opa-mcp-authz` + `consul-mcp-authz` (catálogo KV; enforce é o LiteLLM)
+9. Service intentions
+
+Para o lab local: [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) (`make up`).
 
 Use the component READMEs below for service-specific configuration, local development, container builds, and runtime details.
 
@@ -133,8 +138,13 @@ Use the component READMEs below for service-specific configuration, local develo
 
 | Document | Covers |
 | --- | --- |
-| [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) | Guia de configuração do laboratório (minikube): env vars, Keycloak, Vault CIBA/LoA, Consul (incl. Vault como CA da malha, Vault e Postgres na malha), LiteLLM, timeouts |
+| [`documentation/arquitetura-detalhada.md`](./documentation/arquitetura-detalhada.md) | Mapa de pastas, papéis, tools MCP, scripts do `make up` |
+| [`documentation/fluxo-e-responsabilidades.md`](./documentation/fluxo-e-responsabilidades.md) | Hop a hop e tabela PEP vs PDP |
+| [`documentation/pep-inventory.md`](./documentation/pep-inventory.md) | Inventário de regras (lab + legado) |
+| [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) | Guia de configuração do laboratório (minikube): env vars, Keycloak, Vault, Consul, LiteLLM, Ollama, timeouts |
 | [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) | Local minikube stages (`bootstrap` / `configure` / `keycloak` / `images` / `deploy`), the mesh setup for Vault and Postgres, and Vault as the Consul Connect CA |
+| [`litellm-gateway/README.md`](./litellm-gateway/README.md) | PEP CustomGuardrail + `custom_auth` SPIFFE |
+| [`vault-log/README.md`](./vault-log/README.md) | Hop viewer SSE (`make hop-logs`) |
 | [`infra/README.md`](./infra/README.md) | Terraform provisioning sequence for the demo environment |
 | [`infra/ami/base_image/README.md`](./infra/ami/base_image/README.md) | Base AMI build process required before Terraform apply |
 | [`deploy-k8s/README.md`](./deploy-k8s/README.md) | Kubernetes deployment order, secrets, Consul config, and cleanup |
@@ -152,8 +162,8 @@ Use the component READMEs below for service-specific configuration, local develo
 
 ## Suggested read order
 
-1. Start with this README for the overall demo flow.
-2. Use [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) for env vars, IdP, Vault CIBA, mesh, and LLM.
+1. Start with [`documentation/arquitetura-detalhada.md`](./documentation/arquitetura-detalhada.md) for who does what and where the code lives.
+2. Use [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) for env vars, IdP, Vault, mesh, and LLM.
 3. Use [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) (or [`infra/README.md`](./infra/README.md) on AWS) to provision the environment.
 4. Use [`deploy-k8s/README.md`](./deploy-k8s/README.md) to deploy the workloads.
 5. Use the individual service READMEs for detailed configuration and troubleshooting.

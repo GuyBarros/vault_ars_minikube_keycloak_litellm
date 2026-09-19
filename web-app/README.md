@@ -1,6 +1,6 @@
 # web-app
 
-A Next.js (App Router) rebuild of the original Streamlit app (archived at `../web-app-deprecated/`), styled with the IBM Carbon Design System per the `specs/design/` handoff. Identical functionality — Keycloak OAuth login, AI agent chat with streaming, token-context inspector (subject / actor / OBO), theme toggle, logout — wired through the same `.env` contract.
+A Next.js (App Router) rebuild of the original Streamlit app (archived at `../web-app-deprecated/`), styled with the IBM Carbon Design System. Keycloak OAuth login, streaming chat, token inspector. No laboratório `AI_AGENT_API_URL` aponta para o **LiteLLM** (`:4000`), não para o pod `ai-agent`. Arquitetura: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
 
 ## Stack
 

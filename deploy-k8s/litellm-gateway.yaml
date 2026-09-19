@@ -1,6 +1,6 @@
-# LiteLLM proxy: PEP/PDP for web -> agent, agent -> LLM, and agent -> MCP.
-# Callers are identified by their mesh (SPIFFE) identity; Authorization is
-# forwarded unchanged to the upstream (see litellm-gateway/config.yaml).
+# LiteLLM proxy: PEP + AI Gateway. Callers are identified by their mesh
+# (SPIFFE) identity; Authorization is the upstream JWT. tools/call asks
+# opa-server (catalog + CIBA) and injects OBO/CIBA JWT toward user-mcp.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +18,21 @@ spec:
         # So consul-mcp-authz lists this gateway as a catalog source now that
         # it is the mTLS peer user-mcp sees on every tools/call.
         consul.hashicorp.com/service-meta-agent-tool-authz-role: "agent"
+
+        vault.hashicorp.com/agent-init-first: "true"
+        vault.hashicorp.com/agent-inject: "true"
+        vault.hashicorp.com/role: "litellm-gateway"
+        vault.hashicorp.com/auth-type: "jwt"
+        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
+        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
+        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
+        vault.hashicorp.com/tls-skip-verify: "true"
+        vault.hashicorp.com/template-static-secret-render-interval: "30s"
+        vault.hashicorp.com/agent-inject-secret-actor-token: "identity/oidc/token/agent-role"
+        vault.hashicorp.com/agent-inject-template-actor-token: |
+          {{- with secret "identity/oidc/token/agent-role" -}}
+          {{ .Data.token }}
+          {{- end -}}
       labels:
         app: litellm-gateway
     spec:
@@ -84,6 +99,8 @@ spec:
               value: "admin"
             - name: UI_PASSWORD
               value: "admin"
+            - name: PEP_ACTOR_TOKEN_PATH
+              value: /vault/secrets/actor-token
           envFrom:
             - secretRef:
                 name: litellm-gateway-env
@@ -110,6 +127,10 @@ spec:
             - name: litellm-config
               mountPath: /app/pdp_guardrail.py
               subPath: pdp_guardrail.py
+              readOnly: true
+            - name: litellm-config
+              mountPath: /app/pdp_mcp.py
+              subPath: pdp_mcp.py
               readOnly: true
           resources:
             limits:

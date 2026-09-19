@@ -16,6 +16,7 @@ Structured PDP_Decision logs use the Telefonica catalog field names.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from typing import Any
@@ -61,6 +62,24 @@ def decide(*, path: str, caller: str | None) -> str:
     if caller in ADMITTED_SERVICES:
         return "ALLOW"
     return "DENY"
+
+
+def _emit_audit(payload: dict[str, Any]) -> None:
+    """Write one JSON line to stdout.
+
+    LiteLLM's proxy logging config swallows loggers named litellm-gateway.*,
+    so kubectl logs never see LOGGER.info. print() always reaches the pod
+    stream the hop viewer tails.
+    """
+    line = json.dumps(payload, ensure_ascii=True, default=str, separators=(",", ":"))
+    print(line, flush=True)
+    LOGGER.info("%s", line)
+
+
+def _should_audit(path: str, caller: str | None) -> bool:
+    if is_public_path(path) or "/health" in path:
+        return False
+    return bool(caller) or path.startswith("/v1/") or path.startswith("/user_mcp")
 
 
 def header_value(headers: Any, name: str) -> str | None:
@@ -117,12 +136,40 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
     path = request.url.path
     caller = mesh_caller(header_value(request.headers, CALLER_HEADER))
     decision = decide(path=path, caller=caller)
-    LOGGER.info(
-        "event=pdp_decision PDP_Decision=%s path=%s caller=%s",
-        decision,
-        path,
-        caller,
-    )
+    request_id = header_value(request.headers, "x-request-id")
+    if _should_audit(path, caller):
+        public = is_public_path(path)
+        _emit_audit(
+            {
+                "event": "pdp_decision",
+                "PDP_Decision": decision,
+                "path": path,
+                "caller": caller,
+                "request_id": request_id or "-",
+                "pep": "litellm-gateway/pdp_auth.user_api_key_auth",
+                "pdp": "litellm-gateway/pdp_auth.decide",
+                "pdp_package": "pdp_auth",
+                "pdp_policy": (
+                    "SPIFFE x-mesh-caller-spiffe in ADMITTED_SERVICES="
+                    + ",".join(sorted(ADMITTED_SERVICES))
+                    + "; otherwise fall through to LiteLLM SSO/virtual-key"
+                ),
+                "enforce": (
+                    "admit_mesh"
+                    if decision == "ALLOW" and caller in ADMITTED_SERVICES
+                    else "admit_public"
+                    if decision == "ALLOW" and public
+                    else "fallthrough_litellm_auth"
+                ),
+                "reason": (
+                    "admitted-service"
+                    if caller in ADMITTED_SERVICES
+                    else "public-path"
+                    if public
+                    else "not-in-admitted-services"
+                ),
+            }
+        )
     if decision == "ALLOW":
         return _allowed_auth(caller, public=is_public_path(path))
     # SSO JWTs, virtual keys and the master key are LiteLLM's own auth.

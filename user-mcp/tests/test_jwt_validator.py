@@ -177,3 +177,82 @@ def test_extract_identity_handles_string_scope():
         }
     )
     assert identity["scope"] == "users.read"
+
+
+def test_decode_unverified_reads_claims_without_signature():
+    from auth.jwt_validator import decode_unverified
+
+    token = jwt.encode(
+        {"preferred_username": "alice", "scope": "users.read", "sub": "1"},
+        "secret",
+        algorithm="HS256",
+    )
+    claims = decode_unverified(token)
+    assert claims["preferred_username"] == "alice"
+    assert claims["scope"] == "users.read"
+
+
+def test_decode_unverified_rejects_malformed():
+    from auth.jwt_validator import decode_unverified
+
+    with pytest.raises(AppError) as exc:
+        decode_unverified("not-a-jwt")
+    assert exc.value.error == "invalid_token"
+
+
+async def test_trust_gateway_middleware_binds_identity_and_pep_headers():
+    import logging
+
+    from auth.context import current_obo_user, current_obo_token, current_pep_assurance
+    from auth.jwt_validator import JwtAuthMiddleware
+
+    captured = {}
+
+    async def app(scope, receive, send):
+        captured["user"] = current_obo_user.get()
+        captured["token"] = current_obo_token.get()
+        captured["pep"] = current_pep_assurance.get()
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"ok", "more_body": False})
+
+    token = jwt.encode(
+        {"preferred_username": "alice", "scope": "users.read", "sub": "1"},
+        "secret",
+        algorithm="HS256",
+    )
+    mw = JwtAuthMiddleware(
+        app,
+        validator=None,
+        bypass_auth=False,
+        logger=logging.getLogger("test.auth"),
+        trust_gateway=True,
+    )
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/mcp",
+        "headers": [
+            (b"authorization", f"Bearer {token}".encode("latin-1")),
+            (b"x-pep-decision", b"ALLOW"),
+            (b"x-pep-loa", b"2"),
+            (b"x-pep-required-loa", b"2"),
+        ],
+    }
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    await mw(scope, receive, send)
+    assert captured["user"] == "alice"
+    assert captured["token"] == token
+    assert captured["pep"] == {
+        "decision": "ALLOW",
+        "current_loa": 2,
+        "required_loa": 2,
+    }
+    assert messages[0]["status"] == 200

@@ -79,6 +79,9 @@ spec:
     - name: opa-gov-api
       action: allow
       namespace: default
+    - name: litellm-gateway
+      action: allow
+      namespace: default
 ---
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceIntentions
@@ -125,11 +128,9 @@ spec:
     name: opa-mcp-authz
     namespace: default
   sources:
-    # user-mcp's ServiceDefaults wires builtin/ext-authz to call out to
-    # opa-mcp-authz on every request. Without this intention, transparent
-    # proxy never builds the upstream cluster for it, so the ext-authz
-    # xDS patch fails, Envoy's admin port never binds, and user-mcp's
-    # readiness probe fails forever.
+    # user-mcp's ServiceDefaults used to wire builtin/ext-authz to
+    # opa-mcp-authz. Catalog enforcement moved to LiteLLM; this intention
+    # stays so the OPA sidecar still has a legal mesh path if re-enabled.
     - name: user-mcp
       action: allow
       namespace: default

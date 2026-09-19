@@ -38,13 +38,9 @@
 # CIBA now runs entirely inside user-mcp against Keycloak directly.
 #
 # user-mcp's ServiceDefaults (protocol + localRequestTimeoutMs) lives in
-# deploy-k8s/service-defaults-user-mcp.yaml, NOT here — that file also
-# carries the ext_authz extension for opa-mcp-authz, which IS part of this
-# demo's deploy flow (`make deploy` applies it). A duplicate, ext_authz-less
-# ServiceDefaults/user-mcp here would silently strip that extension whenever
-# this file is applied after it (kubectl apply overwrites the whole spec for
-# a same-name object) — so only the ServiceResolver (a separate CRD kind,
-# not defined anywhere else) belongs in this file.
+# deploy-k8s/service-defaults-user-mcp.yaml, NOT here — keep a single
+# ServiceDefaults/user-mcp so kubectl apply cannot strip fields.
+# CIBA now blocks on LiteLLM, not on this inbound hop.
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceResolver
 metadata:

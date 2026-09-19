@@ -1,0 +1,2 @@
+# Tokens, TLS, Helm values, and logs from `make up` — never commit.
+generated/

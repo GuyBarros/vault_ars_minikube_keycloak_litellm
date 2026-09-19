@@ -1,12 +1,13 @@
-# LiteLLM is the AI Gateway: PEP (every web / agent / MCP hop lands here)
-# and PDP (custom_auth admits ai-agent and web by their mesh identity; SSO JWTs
-# fall through to LiteLLM; the optional OPA guardrail decides on prompt content).
-# ai-agent never talks to Ollama/OpenAI or user-mcp directly; the web BFF
-# never talks to ai-agent directly.
+# LiteLLM is the AI Gateway + PEP (every web / agent / MCP hop lands here).
+# custom_auth admits ai-agent and web by mesh identity; SSO JWTs fall through
+# to LiteLLM. Content PDP is opa-gov-api (when OPA_GOV_API_URL is set).
+# tools/call PDP is opa-server (catalog + CIBA); pdp_mcp injects the OBO or
+# CIBA JWT toward user-mcp. ai-agent never talks to Ollama/OpenAI or user-mcp
+# directly; the web BFF never talks to ai-agent directly.
 #
 # Service callers carry no LiteLLM credential: Authorization stays the upstream
-# JWT (Keycloak access token toward ai-agent, OBO toward user-mcp) and the
-# caller is identified by its SPIFFE ID (see pdp_auth.py).
+# JWT (Keycloak access token toward ai-agent, OBO toward MCP) and the caller
+# is identified by its SPIFFE ID (see pdp_auth.py).
 model_list:
   - model_name: qwen-local
     litellm_params:
@@ -20,8 +21,10 @@ model_list:
       # with finish_reason=tool_calls). Using "openai/" against Ollama's own
       # OpenAI-compatible endpoint instead just forwards that already-correct
       # stream through, sidestepping litellm's buggy translation entirely.
+      # Colima/minikube: host.minikube.internal (and host.docker.internal) is
+      # this Mac. host.containers.internal is Podman-only and does not resolve.
       model: openai/qwen2.5:7b
-      api_base: http://host.containers.internal:11434/v1
+      api_base: http://host.minikube.internal:11434/v1
       api_key: "not-needed"
 
   - model_name: gpt-5-mini
@@ -35,6 +38,14 @@ guardrails:
       guardrail: pdp_guardrail.OpaPdpGuardrail
       mode: pre_call
       default_on: true
+  # tools/call PEP: asks opa-server for catalog + CIBA, then injects JWT.
+  # Must not use true_passthrough — hook extra_headers Authorization would
+  # lose to the inbound OBO JWT and CIBA step-up would never reach user-mcp.
+  - guardrail_name: mcp-pep
+    litellm_params:
+      guardrail: pdp_mcp.McpPepGuardrail
+      mode: pre_mcp_call
+      default_on: true
 
 # Native MCP gateway, not HTTP pass-through. Standard pass-through parses
 # JSON-RPC, injects litellm_logging_obj, and user-mcp then 400s the
@@ -45,13 +56,12 @@ mcp_servers:
     url: "http://user-mcp.virtual.consul/mcp"
     transport: "http"
     # Not "true_passthrough": the Admin UI treats that as client-forwarded auth
-    # and refuses to list tools ("Authentication required") until the viewer
-    # supplies a token. extra_headers alone still forwards the OBO Authorization
-    # on tool calls (checked: user-mcp receives it under auth_type none).
+    # and refuses to list tools until the viewer supplies a token. mcp-pep
+    # injects Authorization on tools/call (OBO or CIBA).
     auth_type: "none"
-    extra_headers: ["Authorization", "X-Request-ID"]
+    extra_headers: ["X-Request-ID"]
     allow_all_keys: true
-    description: "user-mcp (OBO JWT in Authorization)"
+    description: "user-mcp runtime (OBO/CIBA JWT injected by mcp-pep hook)"
 
 # LiteLLM's Agents tab is A2A, not the /v1/agent HTTP pass-through below.
 # Register the chat agent so it shows in GET /v1/agents and the Admin UI.

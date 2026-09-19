@@ -1,6 +1,6 @@
 # AI Agent
 
-This service is a FastAPI-based AI agent runtime. It accepts chat messages, validates a bearer token, loads user-management tools from an upstream MCP server (`user-mcp`) over the streamable-HTTP transport once at startup, then — for each tool the LLM picks — exchanges the user's bearer token for an on-behalf-of (OBO) token carrying *only* the scopes that tool declares it needs and uses that scoped OBO to invoke the upstream tool. A local `shell` tool is also available, and plain-text responses are streamed back to the caller. For test environments, an env flag can bypass the incoming bearer-token requirement and skip OBO token exchange entirely.
+This service is a FastAPI-based AI agent runtime. It accepts chat messages, validates a bearer token, loads user-management tools from the LiteLLM MCP gateway (`USER_MCP_URL` → `/user_mcp/mcp`) over streamable HTTP once at startup, then — for each tool the LLM picks — exchanges the user's bearer token for an on-behalf-of (OBO) token carrying *only* the scopes that tool declares and invokes the tool **through LiteLLM**. A local `shell` tool is also available. See [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
 
 ### Tool → scope contract (per-call OBO exchange)
 
@@ -20,10 +20,7 @@ upstream client. Now it follows the tool's own contract:
    `OboTokenService.resolve_token(scopes=required_scopes)` for an OBO carrying
    *only* those scopes (cached by `(subject_token, role, frozenset(scopes))`),
    builds a transient MCP client with that OBO, and calls the upstream tool.
-4. **Defense in depth.** `user-mcp` independently re-checks the OBO scope
-   inside its tool dispatcher and returns `insufficient_scope` (403) if the
-   token doesn't satisfy the tool's contract — the agent's wrapper turns that
-   into a `ToolMessage` so the LLM can apologize / suggest alternatives.
+4. **Defense in depth no lab:** LiteLLM `pdp_mcp.py` + OPA `mcp.pep` re-check catalog and scope before the call reaches `user-mcp`. Em `USER_MCP_PEP_MODE=runtime` o MCP **não** revalida JWKS/scope/CIBA; em `local` o dispatcher ainda chama `require_scopes`.
 
 A single line traces each call: `event=scoped_tool_invoke tool=<name>
 required_scopes=<list>` at INFO. The token-exchange service emits one
