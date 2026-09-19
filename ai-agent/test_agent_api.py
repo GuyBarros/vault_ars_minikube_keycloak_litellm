@@ -174,6 +174,17 @@ def isolate_runtime(tmp_path, monkeypatch):
     )
 
 
+def test_agent_card_is_served_without_auth_at_all_well_known_paths():
+    client = TestClient(agent_api.app, base_url="http://ai-agent.virtual.consul:8000")
+
+    for path in ("/.well-known/agent-card.json", "/.well-known/agent.json", "/agent.json"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        card = response.json()
+        assert card["name"] == "ai-agent"
+        assert card["url"] == "http://ai-agent.virtual.consul:8000"
+
+
 def test_missing_bearer_token_is_rejected():
     client = TestClient(agent_api.app)
 
@@ -836,7 +847,6 @@ def test_create_app_builds_runtime_from_configured_model(monkeypatch):
             model="openai:gpt-5.4-mini",
             ollama_base_url=agent_api.SETTINGS.ollama_base_url,
             litellm_base_url=agent_api.SETTINGS.litellm_base_url,
-            litellm_api_key=agent_api.SETTINGS.litellm_api_key,
             actor_token_path=agent_api.SETTINGS.actor_token_path,
             token_exchange_url=agent_api.SETTINGS.token_exchange_url,
             token_exchange_timeout_seconds=agent_api.SETTINGS.token_exchange_timeout_seconds,
@@ -874,7 +884,6 @@ def test_create_app_routes_through_litellm_gateway_when_configured(monkeypatch):
             model="openai:qwen-local",
             ollama_base_url=agent_api.SETTINGS.ollama_base_url,
             litellm_base_url="http://litellm-gateway.default.svc.cluster.local:4000/v1",
-            litellm_api_key="sk-test-key",
             actor_token_path=agent_api.SETTINGS.actor_token_path,
             token_exchange_url=agent_api.SETTINGS.token_exchange_url,
             token_exchange_timeout_seconds=agent_api.SETTINGS.token_exchange_timeout_seconds,
@@ -893,7 +902,7 @@ def test_create_app_routes_through_litellm_gateway_when_configured(monkeypatch):
         "kwargs": {
             "streaming": True,
             "base_url": "http://litellm-gateway.default.svc.cluster.local:4000/v1",
-            "api_key": "sk-test-key",
+            "api_key": "sk-litellm-local",
         },
     }
 

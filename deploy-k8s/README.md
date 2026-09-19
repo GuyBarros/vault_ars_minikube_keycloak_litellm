@@ -4,6 +4,10 @@ kubectl apply -f deploy-k8s/proxy-defaults.yaml
 kubectl apply -f deploy-k8s/mesh.yaml
 ```
 
+> `mesh.yaml` sets `allowEnablingPermissiveMutualTLS: true`. That only *allows* a service to opt in to
+> `MutualTLSMode: permissive`; nothing here enables it. The local minikube flow uses it for Vault (see
+> `infra/local-minikube/mesh-vault-postgres.yaml`, which also puts Vault and Postgres in the mesh).
+
 ## Deploy token-exchange service
 ```
 kubectl create secret generic token-exchange-env \

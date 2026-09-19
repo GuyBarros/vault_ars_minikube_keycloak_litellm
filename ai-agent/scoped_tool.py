@@ -23,7 +23,6 @@ def make_scoped_tool(
     user_mcp_url: str,
     assurance_tracker: AssuranceTracker | None = None,
     tool_call_timeout_seconds: float = 30.0,
-    litellm_api_key: str | None = None,
 ) -> StructuredTool:
     """Wrap an MCP tool so each call exchanges its own scope-specific OBO.
 
@@ -84,7 +83,6 @@ def make_scoped_tool(
                 obo_token=obo_token,
                 request_id=request_id,
                 timeout_seconds=tool_call_timeout_seconds,
-                litellm_api_key=litellm_api_key,
             )
             if assurance_tracker is not None:
                 meta = get_last_tool_meta() or {}

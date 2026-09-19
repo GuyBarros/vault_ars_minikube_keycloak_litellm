@@ -40,7 +40,7 @@ At a platform level:
 2. The runtime platform provides the workload's native identity to the agentic workload.
 3. HashiCorp Vault converts that platform-native identity into an OIDC-conformant identity token for the workload, giving the agent a unique non-human identity without application code changes.
 4. The token-exchange service uses the user token and the Vault-issued workload identity token to obtain delegated credentials for downstream access.
-5. HashiCorp Consul provides the service mesh and transparent runtime enforcement layer for agent-facing traffic. The Envoy sidecar delegates request/response inspection to `opa-gov-api` (OPA) or `wx-gov-api` (watsonx.governance) via a thin Lua filter.
+5. HashiCorp Consul provides the service mesh and transparent runtime enforcement layer for agent-facing traffic. In the local minikube flow, Vault is the mesh's certificate authority (Consul's Connect CA), and Vault and Postgres are themselves mesh services. The Envoy sidecar delegates request/response inspection to `opa-gov-api` (OPA) or `wx-gov-api` (watsonx.governance) via a thin Lua filter.
 6. HashiCorp Vault also acts as the secure policy distribution layer for OPA-backed controls, while pluggable policy engines such as OPA and watsonx.governance evaluate requests and responses without requiring changes to the agent application code. Policies themselves are authored and tested in `opa-policy-studio`.
 
 ### Runtime controls enforced by the platform
@@ -69,6 +69,7 @@ The main repo components are:
 | [`web-app/`](./web-app/) | Next.js 15 (App Router) + React 19 + TypeScript UI styled with the IBM Carbon Design System; handles Keycloak OAuth login, streaming AI chat, and the subject / actor / OBO token inspector |
 | [`web-app-deprecated/`](./web-app-deprecated/) | Archived Streamlit version of the web app, kept for reference only |
 | [`ai-agent/`](./ai-agent/) | FastAPI-based AI agent runtime that uses delegated identity and executes agent tools |
+| [`litellm-gateway/`](./litellm-gateway/) | LiteLLM AI gateway config (PEP/PDP) between `web-app`, `ai-agent`, the LLM and `user-mcp`: a `custom_auth` hook that admits `ai-agent` and `web` by their Consul mesh (SPIFFE) identity instead of a shared key, an OPA content guardrail, and an MCP gateway to `user-mcp` |
 | [`user-mcp/`](./user-mcp/) | FastMCP server exposing user-management tools over streamable HTTP; validates the OBO/CIBA JWT against Keycloak JWKS, enforces a per-tool `users.read` / `users.write` scope contract, gates writes on a Vault-policy-driven CIBA approval, and mints per-request Vault-issued Postgres credentials via Vault's OAuth Resource Server |
 | [`token-exchange/`](./token-exchange/) | FastAPI identity broker that performs Keycloak on-behalf-of (RFC 8693) token exchange |
 | [`keycloak-providers/`](./keycloak-providers/) | Custom Keycloak protocol-mapper SPI (RAR + actor-claim injection) baked into the Keycloak image — see [KEYCLOAK_REALM_SETUP.md](./KEYCLOAK_REALM_SETUP.md) |
@@ -132,7 +133,8 @@ Use the component READMEs below for service-specific configuration, local develo
 
 | Document | Covers |
 | --- | --- |
-| [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) | Guia de configuração do laboratório (minikube): env vars, Keycloak, Vault CIBA/LoA, Consul, LiteLLM, timeouts |
+| [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) | Guia de configuração do laboratório (minikube): env vars, Keycloak, Vault CIBA/LoA, Consul (incl. Vault como CA da malha, Vault e Postgres na malha), LiteLLM, timeouts |
+| [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) | Local minikube stages (`bootstrap` / `configure` / `keycloak` / `images` / `deploy`), the mesh setup for Vault and Postgres, and Vault as the Consul Connect CA |
 | [`infra/README.md`](./infra/README.md) | Terraform provisioning sequence for the demo environment |
 | [`infra/ami/base_image/README.md`](./infra/ami/base_image/README.md) | Base AMI build process required before Terraform apply |
 | [`deploy-k8s/README.md`](./deploy-k8s/README.md) | Kubernetes deployment order, secrets, Consul config, and cleanup |
