@@ -67,6 +67,11 @@ images:
 	minikube -p $(PROFILE) image load agentguard-opa-gov-api:local
 
 deploy:
+	# Fail early if ai-agent is set to an Anthropic model but LiteLLM would get no key.
+	model=$$(grep '^LANGCHAIN_MODEL=' $(DEPLOY_DIR)/ai-agent.env | cut -d= -f2-); \
+	if [[ "$$model" =~ (anthropic|claude) && -z "$${ANTHROPIC_API_KEY:-}" ]]; then \
+	  echo "LANGCHAIN_MODEL=$$model is an Anthropic model but ANTHROPIC_API_KEY is not set (export it, then re-run)" >&2; exit 1; \
+	fi
 	# service-intentions.yaml carries opa-service's intention in the `opa` namespace;
 	# without the namespace that one CR fails (masked by the `|| true` below).
 	$(KC) create namespace opa --dry-run=client -o yaml | $(KC) apply -f -
@@ -87,6 +92,7 @@ deploy:
 	$(KC) create secret generic litellm-gateway-env \
 	  --from-literal=LITELLM_MASTER_KEY=$$(cat generated/litellm_master_key) \
 	  --from-literal=OPENAI_API_KEY=$${OPENAI_API_KEY:-} \
+	  --from-literal=ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY:-} \
 	  --from-literal=GENERIC_CLIENT_SECRET=$$(cat generated/keycloak_client_secret_litellm) \
 	  --from-literal=GENERIC_CLIENT_STATE=$$(cat generated/litellm_sso_state) \
 	  --from-literal=DATABASE_URL=postgresql://litellm_user:$$(cat generated/litellm_db_password)@postgres.default.svc.cluster.local:5432/litellm \
