@@ -29,6 +29,9 @@
   grid-area: composer;
   min-width: 0;
 }
+.workspace-grid__assurance {
+  margin-bottom: var(--cds-spacing-04);
+}
 
 @media (max-width: 1200px) {
   .workspace-grid {

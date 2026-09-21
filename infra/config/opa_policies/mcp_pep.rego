@@ -4,14 +4,13 @@ import rego.v1
 
 # REST decision for LiteLLM pdp_mcp.py:
 #   POST /v1/data/mcp/pep/decision
-#   input: {source, dest, tool, scope, user, groups}
+#   input: {source, dest, tool, scope, user, groups, loa}
 #
 # Catalog is loaded from /vault/secrets/catalog.json (Vault KV
 # opa-policies/mcp-authz/catalog) as data.catalog.
 
 default decision := {
 	"allow": false,
-	"ciba_required": false,
 	"reason": "default-deny",
 }
 
@@ -28,11 +27,14 @@ required_scopes := {
 	"update_user_by_email": {"users.write"},
 }
 
-# Mirrors Vault policy ciba-write: create/delete need HITL; update is silent.
-ciba_tools := {
+# Tools that need LoA 2: the user's token must carry acr >= 2, i.e. a Keycloak
+# step-up login (password + OTP). `loa` is the token's acr as the PEP read it.
+loa2_tools := {
 	"create_user",
 	"delete_user_by_email",
 }
+
+current_loa := to_number(object.get(input, "loa", 1))
 
 granted_scopes := {s |
 	some s in split(object.get(input, "scope", ""), " ")
@@ -47,30 +49,42 @@ scope_ok if {
 	required := required_scopes[input.tool]
 	count(required - granted_scopes) == 0
 }
-
+# CT-01.2: Autenticação Multifator / MFA (LoA=2) - PDP
 decision := {
 	"allow": true,
-	"ciba_required": true,
-	"reason": "step-up",
+	"required_loa": 2,
+	"reason": "loa2",
 } if {
 	tool_in_catalog
 	scope_ok
-	input.tool in ciba_tools
-}
-
-decision := {
-	"allow": true,
-	"ciba_required": false,
-	"reason": "allow",
-} if {
-	tool_in_catalog
-	scope_ok
-	not input.tool in ciba_tools
+	input.tool in loa2_tools
+	current_loa >= 2
 }
 
 decision := {
 	"allow": false,
-	"ciba_required": false,
+	"step_up_required": true,
+	"required_loa": 2,
+	"reason": "step_up_required",
+} if {
+	tool_in_catalog
+	scope_ok
+	input.tool in loa2_tools
+	current_loa < 2
+}
+
+decision := {
+	"allow": true,
+	"required_loa": 1,
+	"reason": "allow",
+} if {
+	tool_in_catalog
+	scope_ok
+	not input.tool in loa2_tools
+}
+
+decision := {
+	"allow": false,
 	"reason": "insufficient_scope",
 } if {
 	tool_in_catalog
@@ -79,7 +93,6 @@ decision := {
 
 decision := {
 	"allow": false,
-	"ciba_required": false,
 	"reason": "catalog",
 } if {
 	input.tool

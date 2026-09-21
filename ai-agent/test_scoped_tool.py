@@ -195,6 +195,33 @@ def test_mcp_insufficient_scope_returns_permission_denied_string():
     assert "users.write" in result
 
 
+def test_step_up_denial_is_recorded_for_the_web_app():
+    from assurance import AssuranceTracker
+
+    async def fake_invoke(**kwargs):
+        raise RuntimeError(
+            "Tool 'create_user' requires LoA 2: log in again with acr_values=2 (password + OTP)."
+        )
+
+    tracker = AssuranceTracker()
+    with patch("scoped_tool.invoke_mcp_tool", fake_invoke):
+        wrapped = make_scoped_tool(
+            template_tool=TemplateTool("create_user"),
+            required_scopes=["users.write"],
+            token_service=TokenServiceStub(),
+            subject_token="user-jwt",
+            request_id="req-su",
+            user_mcp_url="http://user-mcp.local/mcp",
+            assurance_tracker=tracker,
+        )
+        result = _run(wrapped.ainvoke({}))
+
+    assert "Step-up required" in result
+    assert tracker.get_last("user-jwt") == {
+        "tool": "create_user", "decision": "STEP_UP_REQUIRED", "current_loa": 1, "required_loa": 2,
+    }
+
+
 def test_other_mcp_errors_become_tool_message():
     """Any tool failure that isn't insufficient_scope (approval denied,
     upstream timeout, downstream service error, ...) must become a

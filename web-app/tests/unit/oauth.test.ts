@@ -13,6 +13,13 @@ describe('buildAuthorizeUrl', () => {
     expect(p.get('redirect_uri')).toBeTruthy();
     expect(p.get('scope')).toBeTruthy();
   });
+
+  it('asks Keycloak for a step-up only when acr is given', () => {
+    const plain = new URL(buildAuthorizeUrl({ state: 's', codeChallenge: 'c' }));
+    expect(plain.searchParams.has('acr_values')).toBe(false);
+    const stepUp = new URL(buildAuthorizeUrl({ state: 's', codeChallenge: 'c', acr: '2' }));
+    expect(stepUp.searchParams.get('acr_values')).toBe('2');
+  });
 });
 
 describe('buildLogoutUrl', () => {

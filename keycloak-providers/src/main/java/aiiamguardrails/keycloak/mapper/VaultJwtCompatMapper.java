@@ -39,6 +39,14 @@ import com.fasterxml.jackson.databind.JsonNode;
  * identity layer, unlike the reference implementation this mapper was
  * adapted from).
  *
+ * <p>The level of authentication survives the exchange: a token-exchange
+ * request builds a fresh client session, so Keycloak's own {@code acr} mapper
+ * would reset it to 1. On a token-exchange grant only (where Keycloak has
+ * already verified {@code subject_token}) this mapper copies the subject
+ * token's {@code acr} onto the exchanged token, plus {@code acr_time}: the
+ * subject token's {@code iat}, i.e. when that level was earned, so a PEP can
+ * expire a step-up long before the token itself expires.
+ *
  * <p>RAR is copied into the JWT (Vault reads the claim, not the token
  * endpoint JSON body) from, in order:
  * <ol>
@@ -52,8 +60,10 @@ public class VaultJwtCompatMapper extends AbstractOIDCProtocolMapper implements 
     public static final String PROVIDER_ID = "oidc-vault-jwt-compat-mapper";
     private static final String AUTH_DETAILS_CLAIM = "authorization_details";
     private static final String ACT_CLAIM = "act";
+    private static final String ACR_TIME_CLAIM = "acr_time";
     private static final String DELEGATION_ACT = "delegation_act";
     private static final String DELEGATION_ACTOR = "delegation_actor";
+    private static final String TOKEN_EXCHANGE_GRANT = "urn:ietf:params:oauth:grant-type:token-exchange";
     private static final String PAR_NOTE = "client_request_param_authorization_details";
     private static final String RAR_TYPE = "vault:path_access";
     private static final String READ_PATH = "database/creds/user-mcp-read-role";
@@ -111,7 +121,38 @@ public class VaultJwtCompatMapper extends AbstractOIDCProtocolMapper implements 
         if (act != null && !act.isEmpty()) {
             token.setOtherClaims(ACT_CLAIM, act);
         }
+        JsonNode subject = subjectTokenPayload(session);
+        String acr = subject == null ? null : text(subject, "acr");
+        if (acr != null) {
+            token.setAcr(acr);
+            JsonNode iat = subject.get("iat");
+            if (iat != null && iat.isNumber()) {
+                token.setOtherClaims(ACR_TIME_CLAIM, iat.asLong());
+            }
+        }
         return token;
+    }
+
+    /** The subject token's payload, only on a token-exchange grant (Keycloak has verified that token). */
+    private static JsonNode subjectTokenPayload(KeycloakSession session) {
+        if (!TOKEN_EXCHANGE_GRANT.equals(formParam(session, "grant_type"))) {
+            return null;
+        }
+        String subjectToken = formParam(session, "subject_token");
+        if (subjectToken == null || subjectToken.isBlank()) {
+            return null;
+        }
+        try {
+            String[] parts = subjectToken.split("\\.");
+            if (parts.length < 2) {
+                return null;
+            }
+            JsonNode payload = JsonSerialization.mapper.readTree(
+                    new String(Base64.getUrlDecoder().decode(pad(parts[1])), StandardCharsets.UTF_8));
+            return payload != null && payload.isObject() ? payload : null;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     @SuppressWarnings("unchecked")

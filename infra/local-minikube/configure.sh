@@ -66,6 +66,10 @@ echo "waiting for port-forwards..."
 for i in $(seq 1 30); do curl -sk "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 && break; sleep 1; done
 for i in $(seq 1 30); do curl -sk "$CONSUL_HTTP_ADDR/v1/status/leader" >/dev/null 2>&1 && break; sleep 1; done
 
+echo "=== 0. Vault audit device (stdout -> kubectl logs vault-0 -c vault) ==="
+vault audit list -format=json | jq -e 'has("file/")' >/dev/null || \
+  vault audit enable file file_path=stdout
+
 echo "=== 1. minikube SA signing key (validates in-cluster workload JWTs) ==="
 minikube -p "$PROFILE" ssh -- sudo cat /var/lib/minikube/certs/sa.pub > "$GEN_DIR/minikube_sa_pub.pem"
 

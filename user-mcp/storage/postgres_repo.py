@@ -14,6 +14,7 @@ from auth.context import (
     current_obo_user,
     current_pep_assurance,
 )
+from auth.jwt_validator import decode_unverified
 from ciba_client import CibaClient
 from errors import AppError
 from loa import ALLOW, DENY, EXPIRED, LOA_BASELINE, LOA_ELEVATED, STEP_UP_REQUIRED, log_pdp_decision
@@ -296,8 +297,14 @@ class PostgresUserRepository(UserRepository):
         if self._ciba is None:
             # Runtime mode: LiteLLM already probed Vault and completed CIBA.
             pep = current_pep_assurance.get(None) or {}
-            current_loa = int(pep.get("current_loa") or LOA_BASELINE)
+            # LoA comes from the JWT (Keycloak's signed `acr` claim); the
+            # PEP headers are only the fallback for tokens without one.
+            claim_loa = decode_unverified(obo_token).get("acr")
+            current_loa = int(claim_loa or pep.get("current_loa") or LOA_BASELINE)
             required_loa = int(pep.get("required_loa") or current_loa)
+            if required_loa >= LOA_ELEVATED:
+                # The write role binds acr == "2", so Vault validates the step-up.
+                await self._vault.login_with_jwt(obo_token, jwt_role)
             _last_assurance.set(
                 {
                     "tool": action,
