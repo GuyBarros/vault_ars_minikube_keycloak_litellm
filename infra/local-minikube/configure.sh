@@ -280,7 +280,7 @@ echo "=== 7. Vault: seed initial OPA MCP authz catalog ==="
 # Seeds the rule catalog loaded by opa-server (data.catalog) and consulted
 # by LiteLLM pdp_mcp.py. consul-mcp-authz may update this KV after startup.
 vault kv put opa-policies/mcp-authz/catalog - <<-EOT
-	{"rules": {"default/litellm-gateway": {"default/user-mcp": {"allow": ["list_all_users", "search_users_by_first_name", "update_user_by_email", "create_user", "delete_user_by_email"]}}}}
+	{"rules": {"default/litellm-gateway": {"default/user-mcp": {"allow": ["list_all_users", "search_users_by_first_name", "update_user_by_email", "create_user"]}}}}
 	EOT
 
 echo "=== 8. Vault as the Consul service mesh (Connect) CA ==="

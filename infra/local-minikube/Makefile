@@ -102,6 +102,8 @@ deploy:
 	  --from-literal=PEP_MCP_DEST=default/user-mcp \
 	  --from-literal=PEP_MCP_AUDIENCE=user-mcp \
 	  --from-literal=PEP_MCP_ISSUER=http://localhost:8081/realms/demo \
+	  --from-literal=PEP_SUBJECT_ISSUER=http://localhost:8081/realms/demo \
+	  --from-literal=PEP_SUBJECT_AUDIENCE=token-exchange \
 	  --from-literal=PEP_KEYCLOAK_JWKS_URL=http://keycloak.virtual.consul/realms/demo/protocol/openid-connect/certs \
 	  --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) create configmap litellm-gateway-config \

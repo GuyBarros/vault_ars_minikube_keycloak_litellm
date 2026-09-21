@@ -146,6 +146,11 @@ async def _discover_mcp_template_tools_at_startup(
             await asyncio.sleep(backoff)
             continue
 
+        templates = [
+            tool
+            for tool in templates
+            if getattr(tool, "name", None) != "delete_user_by_email"
+        ]
         log_event(
             LOGGER,
             "mcp_discovery_completed_at_startup",
@@ -169,13 +174,24 @@ def _wrap_mcp_tools_with_per_call_obo(
     tool_call_timeout_seconds: float = 30.0,
 ) -> list:
     """Replace each MCP tool with a wrapper that exchanges a scope-specific
-    OBO right before the upstream call. In bypass mode (no real user), pass
-    the templates through unchanged so the dev loop keeps working."""
+    OBO right before the upstream call. delete_user_by_email is never bound.
+    In bypass mode (no real user), pass the remaining templates through
+    unchanged so the dev loop keeps working."""
+    usable = [tool for tool in template_tools if getattr(tool, "name", None) != "delete_user_by_email"]
+    if len(usable) != len(template_tools):
+        log_event(
+            LOGGER,
+            "mcp_tool_disabled",
+            level=logging.WARNING,
+            message="delete_user_by_email is disabled and is not bound to the agent.",
+            request_id=request_id,
+            tool_name="delete_user_by_email",
+        )
     if bypass or subject_token is None:
-        return template_tools
+        return usable
 
     wrapped: list = []
-    for template in template_tools:
+    for template in usable:
         required_scopes = extract_required_scopes(template)
         if not required_scopes:
             log_event(
@@ -210,14 +226,15 @@ def _load_startup_agent_id(token_service: OboTokenService) -> str | None:
     try:
         actor_token = token_service.read_actor_token()
     except AppError as exc:
-        log_event(
-            LOGGER,
-            "actor_token_unavailable_at_startup",
-            level=logging.WARNING,
-            message="Actor token unavailable at startup; agent_id will be omitted from log prefix.",
-            error=exc.error,
-            error_message=exc.message,
-        )
+        if exc.error != "actor_token_expired":
+            log_event(
+                LOGGER,
+                "actor_token_unavailable_at_startup",
+                level=logging.WARNING,
+                message="Actor token unavailable at startup; agent_id will be omitted from log prefix.",
+                error=exc.error,
+                error_message=exc.message,
+            )
         return None
     return extract_agent_identity_claims(actor_token)["actor_agent_id"]
 
@@ -346,6 +363,10 @@ def create_app(
             preferred_username = extract_user_identity_claims(
                 access_token_payload
             )["preferred_username"]
+            # Actor JWT is independent of the chat subject. Re-read and check
+            # exp on every turn so a rotated/expired Vault token fails here,
+            # not on the first tools/call.
+            request.app.state.token_service.read_actor_token()
         bind_log_context(preferred_username=preferred_username)
 
         runtime = request.app.state.agent_runtime
