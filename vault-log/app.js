@@ -142,6 +142,18 @@ const EVENT_META = {
     title: "Decisão do PEP",
     icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
   },
+  token_chain_subject: {
+    color: "var(--c-obo)",
+    tag: "subject JWT",
+    title: "Cadeia — subject (Keycloak)",
+    icon: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  },
+  token_chain_actor: {
+    color: "var(--c-broker)",
+    tag: "actor JWT",
+    title: "Cadeia — actor (Vault)",
+    icon: "M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z",
+  },
   ciba_started: {
     color: "var(--c-broker)",
     tag: "CIBA",
@@ -541,7 +553,8 @@ function groupEvents(events) {
   // Skip access events with no resolvable timestamp (e.g. /mcp protocol logs without container prefix).
   const MESH_TYPES = new Set(["mesh_svid", "mesh_intention", "opa_catalog", "collect_skip"]);
   const ATTACH_TYPES = new Set([
-    "pdp_decision", "ciba_started", "ciba_approved", "ciba_denied",
+    "pdp_decision", "token_chain_subject", "token_chain_actor",
+    "ciba_started", "ciba_approved", "ciba_denied",
     "jwt_identity_bound", "vault_db_creds_issued", "db_call", "transform_encode",
     "tool_invoked", "vault_lease_revoked",
   ]);
@@ -693,6 +706,14 @@ function eventDescription(ev) {
       return `Autenticação OIDC concluída &middot; <code>${escapeHtml(j.request_path || "/api/auth/callback")}</code>`;
     case "web_auth_logout":
       return `Sessão encerrada &middot; <code>${escapeHtml(j.request_path || "/api/auth/logout")}</code>`;
+    case "token_chain_subject":
+    case "token_chain_actor": {
+      const decision = j.PDP_Decision || "";
+      const token = j.token ? ` <code>${escapeHtml(j.token)}</code>` : "";
+      const enforce = j.enforce ? ` enforce=<code>${escapeHtml(j.enforce)}</code>` : "";
+      const reason = j.reason ? ` reason=<code>${escapeHtml(String(j.reason))}</code>` : "";
+      return `cadeia${token} <code>${escapeHtml(decision)}</code>${enforce}${reason}`;
+    }
     case "pdp_decision": {
       const decision = j.PDP_Decision || j.decision || "";
       const enforce = j.enforce ? ` enforce=<code>${escapeHtml(j.enforce)}</code>` : "";
@@ -1021,7 +1042,21 @@ const HOP_DEFS = [
     title: "Admissão LiteLLM (SPIFFE web)",
     role: "LiteLLM pdp_auth.py",
     responsibility: "Lua no inbound copia uriSanPeerCertificate para x-mesh-caller-spiffe. Só default/web e default/ai-agent entram como mesh.",
-    match: (e) => e.type === "pdp_decision" && String(e.json?.caller || "").includes("web"),
+    match: (e) => e.type === "pdp_decision" && String(e.json?.caller || "").includes("web") && !e.json?.tool,
+  },
+  {
+    id: "subject-jwt",
+    title: "Cadeia — subject JWT (cada mensagem)",
+    role: "web-app + LiteLLM PEP",
+    responsibility: "JWKS Keycloak no access token da sessão (aud=token-exchange, exp, iss). BFF recusa o chat; o PEP recusa o /v1/agent se o Bearer não conferir.",
+    match: (e) => e.type === "token_chain_subject",
+  },
+  {
+    id: "actor-jwt",
+    title: "Cadeia — actor JWT (cada mensagem)",
+    role: "ai-agent + Vault",
+    responsibility: "Relê /vault/secrets/actor-token e exige exp ainda válido antes do LLM. Assinatura fica com o vault-agent.",
+    match: (e) => e.type === "token_chain_actor",
   },
   {
     id: "agent",
@@ -1057,7 +1092,7 @@ const HOP_DEFS = [
     id: "mcp-pep",
     title: "PEP tools/call → OPA",
     role: "LiteLLM pdp_mcp.py + OPA mcp.pep",
-    responsibility: "Valida JWT Keycloak, pergunta catálogo / scope / CIBA. ALLOW, DENY ou STEP_UP.",
+    responsibility: "Valida JWT OBO/CIBA (JWKS), pergunta catálogo / scope / CIBA. ALLOW, DENY ou STEP_UP. Terceiro elo da cadeia.",
     match: (e) => e.type === "pdp_decision" && e.json?.tool,
   },
   {
@@ -1066,7 +1101,7 @@ const HOP_DEFS = [
     role: "LiteLLM + Keycloak + ciba-channel",
     responsibility: "OPA marca ciba_required. O PEP faz poll. Approve em localhost:8082. JWT LoA 2 substitui o OBO.",
     optional: true,
-    optionalNote: "Não dispara em list/search/update — só create_user e delete_user_by_email.",
+    optionalNote: "Não dispara em list/search/update. Só create_user. delete_user_by_email é recusada no PEP.",
     match: (e) => ["ciba_started", "ciba_approved", "ciba_denied"].includes(e.type) || e.json?.PDP_Decision === "STEP_UP_REQUIRED",
   },
   {

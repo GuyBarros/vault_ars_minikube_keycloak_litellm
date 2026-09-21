@@ -15,7 +15,7 @@ from typing import Any
 from config import Settings
 from errors import AppError
 from logging_utils import log_event
-from security import decode_jwt_payload
+from security import decode_jwt_payload, validate_actor_token
 
 
 @dataclass
@@ -48,6 +48,18 @@ def read_actor_token(actor_token_path: Path, logger: logging.Logger) -> str:
             message="Actor token file is empty.",
         )
 
+    validate_actor_token(actor_token)
+    log_event(
+        logger,
+        "token_chain_actor",
+        message="Actor token still valid",
+        PDP_Decision="ALLOW",
+        pep="ai-agent/validate_actor_token",
+        pdp="vault-agent-inject",
+        enforce="verify_actor_exp",
+        reason="exp-nbf",
+        token="actor",
+    )
     return actor_token
 
 

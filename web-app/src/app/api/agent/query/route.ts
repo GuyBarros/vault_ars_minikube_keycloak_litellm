@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getSession } from '@/lib/auth/session';
+import { verifyAccessToken } from '@/lib/auth/jwt';
 import { AgentUpstreamError, invokeStream } from '@/lib/agent/client';
 import { getRequestId } from '@/lib/log/context';
 import { withRequestContext } from '@/lib/log/with-request-context';
@@ -30,6 +31,41 @@ export const POST = withRequestContext(async (req) => {
   const session = await getSession();
   if (!session?.access_token) {
     return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+  }
+
+  try {
+    const claims = await verifyAccessToken(session.access_token);
+    log.info(
+      {
+        event: 'token_chain_subject',
+        PDP_Decision: 'ALLOW',
+        pep: 'web-app/verifyAccessToken',
+        pdp: 'keycloak-jwks',
+        enforce: 'verify_subject_jwt',
+        reason: 'signature-exp-aud-iss',
+        token: 'subject',
+        aud: claims.aud,
+        iss: claims.iss,
+      },
+      'Subject access token verified before chat',
+    );
+  } catch (err) {
+    log.warn(
+      {
+        event: 'token_chain_subject',
+        PDP_Decision: 'DENY',
+        pep: 'web-app/verifyAccessToken',
+        pdp: 'keycloak-jwks',
+        enforce: 'deny_subject_jwt',
+        reason: err instanceof Error ? err.message : 'invalid_token',
+        token: 'subject',
+      },
+      'Subject access token rejected',
+    );
+    return NextResponse.json(
+      { error: 'invalid_token', detail: 'Subject access token is not valid.' },
+      { status: 401, headers: { 'X-Request-ID': getRequestId() } },
+    );
   }
 
   let parsed;

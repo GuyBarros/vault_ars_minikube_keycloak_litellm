@@ -17,7 +17,7 @@ Runtime = executa a tool depois da decisão.
 | Produto / processo | Papel | Faz | Não faz |
 | --- | --- | --- | --- |
 | **Consul** | API Gateway + malha | Norte-sul (`:8080` web, `:8081` Keycloak, `:8082` CIBA, `:4000` LiteLLM UI). mTLS SPIFFE e Service Intentions no leste-oeste. | Tool, scope, LoA, prompt, credencial Postgres |
-| **LiteLLM** | PEP + AI Gateway | Admissão SPIFFE (`pdp_auth.py`). Proxy `/v1/agent`, `/v1/chat/completions`, MCP `/user_mcp/mcp`. `tools/call`: JWT Keycloak → OPA → injeta OBO ou JWT CIBA (`pdp_mcp.py`). | Guardar ACL. Executar SQL. Mintar credencial de banco |
+| **LiteLLM** | PEP + AI Gateway | Admissão SPIFFE (`pdp_auth.py`). Em cada `/v1/agent/*` vindo de `web`, JWKS do subject JWT (`aud=token-exchange`). Proxy `/v1/agent`, `/v1/chat/completions`, MCP `/user_mcp/mcp`. `tools/call`: JWT OBO/CIBA → OPA → injeta (`pdp_mcp.py`). | Guardar ACL. Executar SQL. Mintar credencial de banco |
 | **OPA `opa-server`** (`mcp.pep`) | PDP de IA (tools/call) | Catálogo Vault KV + `required_scopes` + `ciba_tools`. `POST /v1/data/mcp/pep/decision` | Interceptar HTTP. Falar com o browser |
 | **OPA + `opa-gov-api`** | PDP de conteúdo (opcional) | Prompt injection / code safety via guardrail LiteLLM | Ligado no lab só se `OPA_GOV_API_URL` estiver setado; fail-closed se o OPA cair |
 | **Vault** | Segredos + CA da malha | Actor token do agente, `database/creds`, Transform PII, OAuth Resource Server, Connect CA, bundle/catálogo OPA | Decidir `tools/call`. Não é o PDP de catálogo/CIBA neste lab |
@@ -40,10 +40,10 @@ Browser
 web-app  (login Keycloak; POST /api/agent/query)
   │  mTLS SPIFFE default/web
   ▼
-LiteLLM pdp_auth          PEP admit_mesh (ADMITTED_SERVICES)
+LiteLLM pdp_auth          PEP admit_mesh + JWKS do subject em /v1/agent
   │  pass-through /v1/agent/query
   ▼
-ai-agent                  orquestra; OBO via token-exchange
+ai-agent                  relê actor token (exp) antes do LLM; OBO via token-exchange
   │  chat/completions (modelo qwen-local)
   ▼
 LiteLLM → Ollama          host.minikube.internal:11434/v1
@@ -62,7 +62,7 @@ Postgres                  SELECT; lease revogado ao fim
 ai-agent → web → browser
 ```
 
-`create_user` / `delete_user_by_email` inserem **CIBA** depois do OPA (`ciba_required`): LiteLLM poll Keycloak, humano em `:8082`, `enforce=inject_ciba_jwt`. Update é silencioso (não está em `ciba_tools`).
+`create_user` insere **CIBA** depois do OPA (`ciba_required`): LiteLLM poll Keycloak, humano em `:8082`, `enforce=inject_ciba_jwt`. Update é silencioso. `delete_user_by_email` é recusada no PEP antes do OPA e do CIBA (`enforce=deny`, `reason=tool_disabled`); o agente também não recebe essa tool.
 
 ---
 
@@ -74,7 +74,7 @@ ai-agent → web → browser
 | Admissão no AI Gateway | `pdp_auth.py` | SPIFFE em `{default/web, default/ai-agent}` | header `x-mesh-caller-spiffe` (Lua em `mesh-timeouts.yaml`) |
 | Catálogo MCP (qual tool) | `pdp_mcp.py` `pre_mcp_call` | `mcp.pep` + Vault KV `opa-policies/mcp-authz/catalog` | `infra/config/opa_policies/mcp_pep.rego` |
 | Scope da tool | idem | `required_scopes` no Rego | `users.read` / `users.write` |
-| HITL / LoA | LiteLLM poll CIBA + injeta JWT | `ciba_tools` no Rego (`create_user`, `delete_user_by_email`) | Keycloak CIBA + `ciba-channel` |
+| HITL / LoA | LiteLLM poll CIBA + injeta JWT; `delete_user_by_email` é deny no PEP | `ciba_tools` = `create_user`; `disabled_tools` = `delete_user_by_email` | Keycloak CIBA + `ciba-channel` |
 | Credencial Postgres | user-mcp pede; Vault recusa se ACL falhar | OAuth Resource Server + policies da entity | `database/creds/user-mcp-{read,write}-role` |
 | Máscara PII | user-mcp chama Transform | role `user-mcp-transform`; skip se `groups` contém `admin` | Vault Transform |
 | Prompt injection | guardrail LiteLLM (lab: código ON, efetivo só com OPA no ar) | bundle `opa-policies/bundle` via `opa-gov-api` | Lua no `ai-agent` **não** é aplicado pelo `make deploy` |

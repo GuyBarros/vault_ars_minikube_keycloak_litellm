@@ -8,6 +8,10 @@ SPIFFE ID into x-mesh-caller-spiffe, and only ADMITTED_SERVICES are admitted.
 Everything else — admin-UI SSO JWTs, virtual keys, anything arriving through
 litellm-api-gateway — falls through to LiteLLM's default auth.
 
+Chat hops (/v1/agent/*) also verify the Keycloak subject JWT (JWKS, exp,
+aud, iss) before the request is forwarded to ai-agent. tools/call stays
+in pdp_mcp.py.
+
 The header is only trustworthy while that extension is applied: it is what
 strips any client-supplied copy and sets the real one.
 
@@ -18,8 +22,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from typing import Any
+
+import jwt
 
 LOGGER = logging.getLogger("litellm-gateway.pdp")
 
@@ -54,6 +61,98 @@ def mesh_caller(spiffe_id: str | None) -> str | None:
 
 def is_public_path(path: str) -> bool:
     return any(path == prefix or path.startswith(prefix + "/") for prefix in PUBLIC_PATH_PREFIXES)
+
+
+def is_chat_path(path: str) -> bool:
+    """Subject JWT is required on the chat pass-through, not on LLM/MCP hops."""
+    return path == "/v1/agent" or path.startswith("/v1/agent/")
+
+
+class SubjectJwtError(Exception):
+    def __init__(self, message: str, error: str):
+        super().__init__(message)
+        self.message = message
+        self.error = error
+
+
+class SubjectJwtValidator:
+    """Verify the Keycloak access token the web BFF forwards on each chat turn."""
+
+    def __init__(
+        self,
+        jwks_url: str,
+        issuer: str,
+        audience: str,
+        jwks_cache_seconds: int = 3600,
+    ):
+        self._jwks_client = jwt.PyJWKClient(
+            jwks_url,
+            cache_keys=True,
+            lifespan=jwks_cache_seconds,
+        )
+        self._issuer = issuer
+        self._audience = audience
+
+    def validate(self, token: str) -> dict[str, Any]:
+        try:
+            signing_key = self._jwks_client.get_signing_key_from_jwt(token).key
+        except jwt.PyJWKClientError as exc:
+            raise SubjectJwtError(f"Unable to fetch signing key: {exc}", "invalid_token") from exc
+        except jwt.DecodeError as exc:
+            raise SubjectJwtError(f"Malformed token: {exc}", "invalid_token") from exc
+        try:
+            return jwt.decode(
+                token,
+                signing_key,
+                algorithms=["RS256"],
+                audience=self._audience,
+                issuer=self._issuer,
+                options={"require": ["exp", "iat", "aud", "iss"]},
+                leeway=30,
+            )
+        except jwt.ExpiredSignatureError as exc:
+            raise SubjectJwtError("Bearer token has expired.", "expired_token") from exc
+        except jwt.InvalidAudienceError as exc:
+            raise SubjectJwtError(
+                "Token audience does not match the chat client.",
+                "invalid_audience",
+            ) from exc
+        except jwt.InvalidIssuerError as exc:
+            raise SubjectJwtError("Token issuer is not trusted.", "invalid_issuer") from exc
+        except jwt.InvalidTokenError as exc:
+            raise SubjectJwtError(f"Token is invalid: {exc}", "invalid_token") from exc
+
+
+_SUBJECT_VALIDATOR: SubjectJwtValidator | None = None
+
+
+def subject_validator() -> SubjectJwtValidator:
+    global _SUBJECT_VALIDATOR
+    if _SUBJECT_VALIDATOR is None:
+        jwks_url = os.getenv("PEP_KEYCLOAK_JWKS_URL", "")
+        issuer = os.getenv("PEP_SUBJECT_ISSUER") or os.getenv("PEP_MCP_ISSUER", "")
+        audience = os.getenv("PEP_SUBJECT_AUDIENCE", "token-exchange")
+        if not jwks_url or not issuer or not audience:
+            raise SubjectJwtError(
+                "PEP_KEYCLOAK_JWKS_URL, PEP_SUBJECT_ISSUER (or PEP_MCP_ISSUER), "
+                "and PEP_SUBJECT_AUDIENCE are required to verify chat tokens.",
+                "configuration_error",
+            )
+        _SUBJECT_VALIDATOR = SubjectJwtValidator(jwks_url, issuer, audience)
+    return _SUBJECT_VALIDATOR
+
+
+def reset_subject_validator() -> None:
+    """Drop the cached JWKS client. Tests call this after changing env."""
+    global _SUBJECT_VALIDATOR
+    _SUBJECT_VALIDATOR = None
+
+
+def strip_bearer(value: str | None) -> str:
+    raw = (value or "").strip()
+    if raw.lower().startswith("bearer "):
+        return raw[7:].strip()
+    return raw
 
 
 def decide(*, path: str, caller: str | None) -> str:
@@ -174,7 +273,66 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
                 ),
             }
         )
-    if decision == "ALLOW":
-        return _allowed_auth(caller, public=is_public_path(path))
-    # SSO JWTs, virtual keys and the master key are LiteLLM's own auth.
-    return await _default_user_api_key_auth(request, api_key)
+    if decision != "ALLOW":
+        # SSO JWTs, virtual keys and the master key are LiteLLM's own auth.
+        return await _default_user_api_key_auth(request, api_key)
+
+    if is_chat_path(path) and caller == "default/web":
+        token = strip_bearer(api_key) or strip_bearer(
+            header_value(request.headers, "authorization")
+        )
+        try:
+            claims = subject_validator().validate(token)
+        except SubjectJwtError as exc:
+            _emit_audit(
+                {
+                    "event": "token_chain_subject",
+                    "PDP_Decision": "DENY",
+                    "path": path,
+                    "caller": caller,
+                    "request_id": request_id or "-",
+                    "pep": "litellm-gateway/pdp_auth.subject_jwt",
+                    "pdp": "keycloak-jwks",
+                    "pdp_package": "subject",
+                    "pdp_policy": (
+                        "RS256 JWKS PEP_KEYCLOAK_JWKS_URL; aud=PEP_SUBJECT_AUDIENCE; "
+                        "iss=PEP_SUBJECT_ISSUER; require exp,iat,aud,iss"
+                    ),
+                    "enforce": "deny_subject_jwt",
+                    "reason": exc.message,
+                    "error": exc.error,
+                    "token": "subject",
+                }
+            )
+            from litellm.proxy._types import ProxyException
+
+            raise ProxyException(
+                message=exc.message,
+                type=exc.error,
+                param=None,
+                code=401,
+            ) from exc
+        _emit_audit(
+            {
+                "event": "token_chain_subject",
+                "PDP_Decision": "ALLOW",
+                "path": path,
+                "caller": caller,
+                "request_id": request_id or "-",
+                "preferred_username": claims.get("preferred_username") or "-",
+                "pep": "litellm-gateway/pdp_auth.subject_jwt",
+                "pdp": "keycloak-jwks",
+                "pdp_package": "subject",
+                "pdp_policy": (
+                    "RS256 JWKS PEP_KEYCLOAK_JWKS_URL; aud=PEP_SUBJECT_AUDIENCE; "
+                    "iss=PEP_SUBJECT_ISSUER; require exp,iat,aud,iss"
+                ),
+                "enforce": "verify_subject_jwt",
+                "reason": "signature-exp-aud-iss",
+                "token": "subject",
+                "aud": claims.get("aud"),
+                "iss": claims.get("iss"),
+            }
+        )
+
+    return _allowed_auth(caller, public=is_public_path(path))
