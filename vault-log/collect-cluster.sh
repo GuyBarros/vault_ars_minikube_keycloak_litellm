@@ -10,6 +10,7 @@ export PROFILE
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 GEN_DIR="$REPO_ROOT/infra/local-minikube/generated"
+export GEN_DIR
 OUT="$SCRIPT_DIR/live-dump.txt"
 SNAP_JSON="$SCRIPT_DIR/live-snapshot.json"
 KC=(kubectl --context "$PROFILE")
@@ -50,7 +51,7 @@ emit_json() {
 
 # --- snapshot: SPIFFE expected IDs, intentions, catalog ---
 python3 - "$SNAP_JSON" "$OUT" "${SPIFFE_SERVICES[@]}" <<'PY'
-import json, os, subprocess, sys, datetime
+import json, os, pathlib, subprocess, sys, datetime
 
 snap_path, dump_path, *services = sys.argv[1:]
 kc = ["kubectl", "--context", os.environ.get("PROFILE", "local-minikube-demo")]
@@ -63,10 +64,14 @@ def run(args):
     except Exception as e:
         return 1, "", str(e)
 
+sys.path.insert(0, os.path.dirname(snap_path))  # vault-log/, for mesh_identity
+from mesh_identity import consul_identity, spiffe_id
+
+trust_domain, datacenter = consul_identity(kc, pathlib.Path(os.environ["GEN_DIR"]) / "consul_token")
 identities = []
 for spec in services:
     ns, svc = spec.split("/", 1)
-    spiffe = f"spiffe://dc1.consul/ns/{ns}/dc/dc1/svc/{svc}"
+    spiffe = spiffe_id(trust_domain, datacenter, ns, svc)
     identities.append({
         "service": svc,
         "namespace": ns,
@@ -94,12 +99,12 @@ if code == 0 and out.strip():
 
 snapshot = {
     "collected_at": now,
-    "trust_domain": "dc1.consul",
+    "trust_domain": trust_domain,
     "identities": identities,
     "intentions": intentions,
     "catalog": None,
     "notes": [
-        "SPIFFE IDs are the Consul Connect SVID shape this lab mints (dc1 / namespace / service).",
+        "SPIFFE IDs are the Consul Connect SVID shape this lab mints (trust domain / namespace / datacenter / service), read from Consul.",
         "pdp_auth.py admits default/web and default/ai-agent from x-mesh-caller-spiffe (Envoy Lua copies uriSanPeerCertificate).",
         "Vault mints Postgres creds (database/creds) and Transform encodings; it does not decide tools/call.",
         "OPA mcp.pep decides catalog + scope + CIBA; LiteLLM pdp_mcp.py enforces and polls Keycloak.",

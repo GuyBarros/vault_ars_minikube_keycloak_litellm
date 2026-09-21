@@ -66,6 +66,10 @@ echo "waiting for port-forwards..."
 for i in $(seq 1 30); do curl -sk "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 && break; sleep 1; done
 for i in $(seq 1 30); do curl -sk "$CONSUL_HTTP_ADDR/v1/status/leader" >/dev/null 2>&1 && break; sleep 1; done
 
+echo "=== 0. Vault audit device (stdout -> kubectl logs vault-0 -c vault) ==="
+vault audit list -format=json | jq -e 'has("file/")' >/dev/null || \
+  vault audit enable file file_path=stdout
+
 echo "=== 1. minikube SA signing key (validates in-cluster workload JWTs) ==="
 minikube -p "$PROFILE" ssh -- sudo cat /var/lib/minikube/certs/sa.pub > "$GEN_DIR/minikube_sa_pub.pem"
 
@@ -208,8 +212,9 @@ vault write identity/oidc/config issuer="https://${VAULT_PUBLIC_ADDR}"
 # infra/local-minikube/keycloak.sh) instead of re-registering per pod.
 template=$(jq -n -r --arg org "$ID_ORG" --arg bu "$ID_BU" --arg dept "$ID_DEPT" --arg svc "$ID_SVC_GROUP" \
   '"{\"org\": \"" + $org + "\", \"bu\": \"" + $bu + "\", \"department\": \"" + $dept + "\", \"service_group\": \"" + $svc + "\", \"entity_id\": {{identity.entity.id}}, \"agent_id\": \"ai-agent\"}"')
+# client_id is pinned so token-exchange can require it as the actor token's audience.
 jq -n --arg key "default" --argjson ttl 3600 --arg template "$template" \
-  '{key: $key, ttl: $ttl, template: $template}' | vault write identity/oidc/role/agent-role -
+  '{key: $key, ttl: $ttl, template: $template, client_id: "agent-actor"}' | vault write identity/oidc/role/agent-role -
 
 echo "=== 5. Vault: user-mcp database secrets engine (dynamic Postgres creds) ==="
 vault secrets list -format=json | jq -e 'has("database/")' >/dev/null || \
@@ -233,12 +238,13 @@ write_create=$(cat <<SQL
 CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';
 GRANT CONNECT ON DATABASE ${USERS_DB_NAME} TO "{{name}}";
 GRANT USAGE ON SCHEMA public TO "{{name}}";
-GRANT SELECT, INSERT, UPDATE, DELETE ON users TO "{{name}}";
+GRANT SELECT, INSERT, UPDATE ON users TO "{{name}}";
 GRANT USAGE, SELECT ON SEQUENCE users_id_seq TO "{{name}}";
 SQL
 )
 db_revoke=$(cat <<SQL
 REVOKE ALL PRIVILEGES ON users FROM "{{name}}";
+REVOKE ALL PRIVILEGES ON SEQUENCE users_id_seq FROM "{{name}}";
 REVOKE ALL PRIVILEGES ON SCHEMA public FROM "{{name}}";
 REVOKE CONNECT ON DATABASE ${USERS_DB_NAME} FROM "{{name}}";
 DROP ROLE IF EXISTS "{{name}}";

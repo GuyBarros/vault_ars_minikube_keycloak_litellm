@@ -24,6 +24,10 @@ class AssuranceTracker:
         with self._lock:
             return self._last_by_subject.get(subject_token)
 
+    def discard(self, subject_token: str) -> None:
+        with self._lock:
+            self._last_by_subject.pop(subject_token, None)
+
     def clear(self) -> None:
         with self._lock:
             self._last_by_subject.clear()

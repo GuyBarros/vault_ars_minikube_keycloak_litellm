@@ -13,6 +13,9 @@ from mcp_client import get_last_tool_meta, invoke_mcp_tool
 
 LOGGER = logging.getLogger("agent_api.scoped_tool")
 
+# Text of the LiteLLM PEP's step_up_required denial (litellm-gateway/pdp_mcp.py).
+STEP_UP_MARKER = "requires LoA 2"
+
 
 def make_scoped_tool(
     template_tool: Any,
@@ -97,6 +100,29 @@ def make_scoped_tool(
             raise
         except Exception as exc:  # noqa: BLE001 - surface broad MCP errors as ToolMessage
             err_text = str(exc)
+            if STEP_UP_MARKER in err_text:
+                # The LiteLLM PEP wants LoA 2 (an OTP step-up login). Record it so the
+                # web app (via /v1/agent/assurance) can prompt the user and retry.
+                if assurance_tracker is not None:
+                    assurance_tracker.record(
+                        subject_token,
+                        {"tool": name, "decision": "STEP_UP_REQUIRED", "current_loa": 1, "required_loa": 2},
+                    )
+                log_event(
+                    LOGGER,
+                    "scoped_tool_step_up_required",
+                    level=logging.INFO,
+                    message=f"MCP tool {name} needs a LoA 2 step-up login",
+                    request_id=request_id,
+                    tool=name,
+                )
+                return (
+                    f"Step-up required: {name} needs a stronger login (LoA 2, one-time code). "
+                    "The web app is showing a Verify button that opens a small verification window; "
+                    "tell the user to click it and enter their one-time code there, and the request "
+                    "will be retried automatically. Do not mention devices or push notifications, "
+                    "and do not retry this tool yourself."
+                )
             if "insufficient_scope" in err_text:
                 log_event(
                     LOGGER,
