@@ -2,7 +2,7 @@ import { hostname } from 'node:os';
 import { lookup } from 'node:dns/promises';
 import pino, { type LoggerOptions } from 'pino';
 import { config } from '@/lib/config';
-import { getRequestContext } from '@/lib/log/context';
+import { getRequestContext, type RequestContext } from '@/lib/log/context';
 
 const HOSTNAME = hostname();
 
@@ -42,6 +42,23 @@ function redact<T>(value: T): T {
   return out as unknown as T;
 }
 
+function cadernoAudit(body: Record<string, unknown>, ctx: RequestContext): Record<string, unknown> {
+  if (!('PDP_Decision' in body)) return body;
+  const reason = String(body.reason || body.error || '-');
+  const pkg = String(body.pdp_package || body.event || 'pep');
+  const user = body.UserID || body.preferred_username || ctx.preferred_username || '-';
+  return {
+    ...body,
+    PDP_Decision: body.PDP_Decision,
+    LoA_Level: body.LoA_Level ?? 1,
+    TransactionID: body.TransactionID || body.request_id || ctx.request_id || '-',
+    UserID: user,
+    Workload_mTLS_CN: body.Workload_mTLS_CN || 'default/web',
+    PDP_Decision_ID: body.PDP_Decision_ID || `${pkg}:${reason}`,
+    Timestamp_UTC: body.Timestamp_UTC || new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+  };
+}
+
 const baseOptions: LoggerOptions = {
   level: config.LOG_LEVEL,
   base: undefined,
@@ -53,6 +70,7 @@ const baseOptions: LoggerOptions = {
     },
     log(obj) {
       const ctx = getRequestContext();
+      const body = redact(obj) as Record<string, unknown>;
       return {
         service: config.LOG_SERVICE_NAME,
         environment: config.LOG_ENVIRONMENT,
@@ -66,7 +84,7 @@ const baseOptions: LoggerOptions = {
         process_name: process.title,
         thread: 0,
         thread_name: 'main',
-        ...redact(obj),
+        ...cadernoAudit(body, ctx),
       };
     },
   },

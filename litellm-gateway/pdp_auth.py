@@ -28,6 +28,8 @@ from typing import Any
 
 import jwt
 
+from audit_fields import stamp_caderno_audit
+
 LOGGER = logging.getLogger("litellm-gateway.pdp")
 
 PUBLIC_PATH_PREFIXES = (
@@ -170,7 +172,8 @@ def _emit_audit(payload: dict[str, Any]) -> None:
     so kubectl logs never see LOGGER.info. print() always reaches the pod
     stream the hop viewer tails.
     """
-    line = json.dumps(payload, ensure_ascii=True, default=str, separators=(",", ":"))
+    stamped = stamp_caderno_audit(payload)
+    line = json.dumps(stamped, ensure_ascii=True, default=str, separators=(",", ":"))
     print(line, flush=True)
     LOGGER.info("%s", line)
 
@@ -237,6 +240,7 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
     caller = mesh_caller(caller_spiffe)
     decision = decide(path=path, caller=caller)
     request_id = header_value(request.headers, "x-request-id")
+    workload = caller_spiffe or caller or "-"
     if _should_audit(path, caller):
         public = is_public_path(path)
         _emit_audit(
@@ -248,6 +252,7 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
                 # caller_service is the "<namespace>/<service>" form the policy matches on.
                 "caller": caller_spiffe,
                 "caller_service": caller,
+                "Workload_mTLS_CN": workload,
                 "request_id": request_id or "-",
                 "pep": "litellm-gateway/pdp_auth.user_api_key_auth",
                 "pdp": "litellm-gateway/pdp_auth.decide",
@@ -290,6 +295,7 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
                     "PDP_Decision": "DENY",
                     "path": path,
                     "caller": caller,
+                    "Workload_mTLS_CN": workload,
                     "request_id": request_id or "-",
                     "pep": "litellm-gateway/pdp_auth.subject_jwt",
                     "pdp": "keycloak-jwks",
@@ -318,6 +324,7 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
                 "PDP_Decision": "ALLOW",
                 "path": path,
                 "caller": caller,
+                "Workload_mTLS_CN": workload,
                 "request_id": request_id or "-",
                 "preferred_username": claims.get("preferred_username") or "-",
                 "pep": "litellm-gateway/pdp_auth.subject_jwt",
