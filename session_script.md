@@ -99,10 +99,20 @@ python3 scripts/demo_expired_jwt_rejected.py
 
 # CT-06.1: Validação de Logs de Auditoria e Não-Repúdio. 
 
-CT-06.2: 
+# CT-06.2: Comportamento Fail-Closed do PEP em Indisponibilidade do PDP (Cenário Negativo)
+## tira o opa server do ar
+```
 kubectl --context local-minikube-demo -n opa scale deploy/opa-server --replicas=0
+```
 
+## garanta que ta tirado
+```
 kubectl --context local-minikube-demo logs deploy/litellm-gateway -c litellm-gateway --tail=200 | grep -i "opa_unreachable\|OPA PDP failed"
+```
+## mostra que nao da pra chamar agents/tools
 
+## volta o opa server pra nao quebrar o resto do demo
+```
 kubectl --context local-minikube-demo -n opa scale deploy/opa-server --replicas=1
 kubectl --context local-minikube-demo -n opa rollout status deploy/opa-server
+```
