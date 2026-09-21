@@ -98,6 +98,7 @@ def build_forged_jwt(issuer: str, extra_claims: dict | None = None, kid: str | N
         "groups": ["admin"],  # would satisfy token-exchange's local scope check
         "iat": now,
         "exp": now + 300,
+        "acr":2,
         **(extra_claims or {}),
     }
     return jwt.encode(claims, forged_key, algorithm="RS256", headers={"kid": kid} if kid else None)
