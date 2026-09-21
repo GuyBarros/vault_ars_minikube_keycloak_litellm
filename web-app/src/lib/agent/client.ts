@@ -141,6 +141,17 @@ function buildPayload(message: string, history: ChatMessage[], stream: boolean) 
   };
 }
 
+/** A readable string for an error field: a string as is, an object via its `message`. */
+function errorText(value: unknown): string {
+  if (typeof value === 'string') return value.trim();
+  if (value && typeof value === 'object') {
+    const message = (value as Record<string, unknown>).message;
+    if (typeof message === 'string' && message.trim()) return message.trim();
+    return JSON.stringify(value);
+  }
+  return String(value).trim();
+}
+
 async function extractErrorBody(res: Response): Promise<string> {
   const ct = res.headers.get('Content-Type') ?? '';
   if (ct.toLowerCase().includes('application/json')) {
@@ -150,7 +161,7 @@ async function extractErrorBody(res: Response): Promise<string> {
         const obj = data as Record<string, unknown>;
         for (const key of ['error_description', 'detail', 'message', 'error', 'response']) {
           const v = obj[key];
-          if (v) return String(v).trim();
+          if (v) return errorText(v);
         }
         return JSON.stringify(data);
       }
