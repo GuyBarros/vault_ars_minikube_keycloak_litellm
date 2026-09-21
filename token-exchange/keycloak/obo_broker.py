@@ -7,6 +7,7 @@ import tenacity.stop
 import tenacity.wait
 
 from broker.cache import TokenCache
+from keycloak.actor_token import ActorTokenValidator
 from exceptions.errors import VerifyTokenExchangeError
 from app_logging.logger import get_logger
 from keycloak.authorization import authorize_scope
@@ -42,9 +43,11 @@ class OBOBroker:
         self,
         verify_client: KeycloakTokenExchangeClient | None = None,
         cache: TokenCache | None = None,
+        actor_validator: ActorTokenValidator | None = None,
     ) -> None:
         self._client = verify_client or KeycloakTokenExchangeClient()
         self._cache = cache or TokenCache()
+        self._actor_validator = actor_validator or ActorTokenValidator.from_settings()
 
     def exchange_obo_token(
         self, subject_token: str, actor_token: str, scope: str
@@ -57,7 +60,8 @@ class OBOBroker:
 
         Args:
             subject_token: The caller's access token (JWT).
-            actor_token:   The Vault Identity JWT acting on behalf of the subject.
+            actor_token:   The Vault Identity JWT acting on behalf of the subject;
+                           verified against Vault's published keys before use.
             scope:         Space-separated OAuth scopes to request on the OBO token.
 
         Returns:
@@ -65,14 +69,16 @@ class OBOBroker:
 
         Raises:
             VerifyAuthorizationError:   Caller's groups don't entitle the requested scope.
-            VerifyAuthenticationError:  Keycloak rejected the request.
+            VerifyAuthenticationError:  actor_token isn't a valid Vault identity token, or
+                                        Keycloak rejected the request.
             VerifyTokenExchangeError:   Keycloak could not complete the exchange.
             CacheError:                 Unexpected cache failure.
         """
         start = time.monotonic()
+        actor_claims = self._actor_validator.validate(actor_token)
         authorize_scope(subject_token, scope)
         preferred_username = claim_from_token(subject_token, "preferred_username")
-        agent_id = claim_from_token(actor_token, "agent_id")
+        agent_id = actor_claims.get("agent_id")
 
         normalized_scope = _normalize_scope(scope)
         # Compose actor_token + normalized scope into the second cache slot so the

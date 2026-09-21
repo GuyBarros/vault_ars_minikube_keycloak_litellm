@@ -116,7 +116,7 @@ The OBO token's `scope` claim drives both the Vault role and the DB credential p
 
 | OBO `scope` contains | JWT role used                          | DB credential path                                      | DB privileges granted   |
 | -------------------- | -------------------------------------- | ------------------------------------------------------- | ----------------------- |
-| `users.write`        | `USER_MCP_VAULT_JWT_WRITE_ROLE`        | `USER_MCP_VAULT_DB_WRITE_PATH` (defaults to `database/creds/user-mcp-write-role`) | `SELECT, INSERT, UPDATE, DELETE` on `users` |
+| `users.write`        | `USER_MCP_VAULT_JWT_WRITE_ROLE`        | `USER_MCP_VAULT_DB_WRITE_PATH` (defaults to `database/creds/user-mcp-write-role`) | `SELECT, INSERT, UPDATE` on `users` (no `DELETE`) |
 | `users.read` (only)  | `USER_MCP_VAULT_JWT_READ_ROLE`         | `USER_MCP_VAULT_DB_READ_PATH` (defaults to `database/creds/user-mcp-read-role`)   | `SELECT` on `users`     |
 | neither              | — (request rejected with 403)          | —                                                       | —                       |
 
@@ -474,7 +474,7 @@ The Vault and Postgres infrastructure backing this service is provisioned by the
      creation_statements="CREATE ROLE \"{{name}}\" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}'; \
        GRANT CONNECT ON DATABASE users TO \"{{name}}\"; \
        GRANT USAGE ON SCHEMA public TO \"{{name}}\"; \
-       GRANT SELECT, INSERT, UPDATE, DELETE ON users TO \"{{name}}\";" \
+       GRANT SELECT, INSERT, UPDATE ON users TO \"{{name}}\";" \
      default_ttl=1h max_ttl=24h
    ```
 

@@ -76,6 +76,8 @@ class TestSettings:
             vault_addr="https://vault.example.com",
             vault_tls_verify=False,
             vault_ca_bundle="/tmp/vault-ca.pem",
+            actor_issuer="",
+            actor_audience="",
             keycloak_url="https://keycloak.example.com",
             keycloak_realm="demo",
             keycloak_token_exchange_audience="user-mcp",

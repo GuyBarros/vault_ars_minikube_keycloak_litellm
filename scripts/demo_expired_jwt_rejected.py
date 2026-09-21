@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Demo (CT-04.2): a genuinely expired JWT is refused by the LiteLLM PEP.
 
-  1. temporarily shorten the realm's access-token lifespan (default 30s) and
-     enable direct-access grants on the `web` client so a user token can be
-     minted from a script (both restored on exit, even on failure)
-  2. log in as `writer`, exchange it for an OBO token via token-exchange
+  1. temporarily shorten the OBO token's lifespan: the `token-exchange` client's
+     access.token.lifespan, normally 300s (default here 30s);
+     restored on exit, even on failure
+  2. log in as `writer` through Keycloak's browser flow (password only, LoA 1;
+     see keycloak_login.py) and exchange it for an OBO token via token-exchange
   3. control: MCP tools/call list_all_users through LiteLLM with the fresh
      token -> must succeed
   4. wait until the token is past exp + the PEP's 30s leeway
@@ -31,6 +32,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+import keycloak_login
+from keycloak_login import login
 
 ROOT = Path(__file__).resolve().parents[1]
 CTX = "local-minikube-demo"
@@ -123,7 +127,7 @@ def jwt_claims(token: str) -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--keycloak-url", default="http://localhost:8081")
-    ap.add_argument("--lifespan", type=int, default=30, help="temporary access-token lifespan, seconds")
+    ap.add_argument("--lifespan", type=int, default=30, help="temporary OBO token lifespan, seconds")
     ap.add_argument("--scope", default="users.read")
     ap.add_argument("--user", default="writer")
     ap.add_argument("--password", default="writer")
@@ -132,28 +136,24 @@ def main() -> None:
     args = ap.parse_args()
 
     admin_pw = (ROOT / "infra/local-minikube/generated/keycloak_admin_password").read_text().strip()
-    web_secret = next(line.split("=", 1)[1].strip()
-                      for line in (ROOT / "deploy-k8s/web-app.env").read_text().splitlines()
-                      if line.startswith("KEYCLOAK_CLIENT_SECRET="))
 
     kc = KeycloakAdmin(args.keycloak_url, admin_pw)
-    web = kc.call("GET", "/clients?clientId=web")[0]
-    orig_lifespan = kc.call("GET", "")["accessTokenLifespan"]
-    orig_direct = web["directAccessGrantsEnabled"]
+    exchange = kc.call("GET", "/clients?clientId=token-exchange")[0]
+    orig_lifespan = exchange["attributes"].get("access.token.lifespan")
+
+    def set_lifespan(value: str | None) -> None:
+        """Set (or, with None, remove) the token-exchange client's own OBO token lifespan."""
+        attributes = {k: v for k, v in exchange["attributes"].items() if k != "access.token.lifespan"}
+        if value is not None:
+            attributes["access.token.lifespan"] = value
+        kc.call("PUT", f"/clients/{exchange['id']}", {**exchange, "attributes": attributes})
 
     try:
-        print(f"Realm accessTokenLifespan {orig_lifespan}s -> {args.lifespan}s (restored on exit)")
-        kc.call("PUT", "", {"accessTokenLifespan": args.lifespan})
-        if not orig_direct:
-            print("Enabling direct-access grants on client `web` (restored on exit)")
-            kc.call("PUT", f"/clients/{web['id']}", {**web, "directAccessGrantsEnabled": True})
+        print(f"OBO token lifespan {orig_lifespan or 'realm default'}s -> {args.lifespan}s (restored on exit)")
+        set_lifespan(str(args.lifespan))
 
-        subject = form_post(
-            f"{args.keycloak_url}/realms/{REALM}/protocol/openid-connect/token",
-            {"grant_type": "password", "client_id": "web", "client_secret": web_secret,
-             "username": args.user, "password": args.password,
-             "scope": "openid profile email Agent.Invoke"},
-        )["access_token"]
+        keycloak_login.KC = args.keycloak_url.rstrip("/")
+        subject = login(args.user, args.password)["access_token"]
 
         obo = incluster_post({"url": args.token_exchange_url, "add_actor": True,
                               "body": {"subject_token": subject, "scope": args.scope}})
@@ -181,10 +181,8 @@ def main() -> None:
     finally:
         # The admin token (60s) has expired during the wait; log in again to restore.
         kc = KeycloakAdmin(args.keycloak_url, admin_pw)
-        kc.call("PUT", "", {"accessTokenLifespan": orig_lifespan})
-        if not orig_direct:
-            kc.call("PUT", f"/clients/{web['id']}", {**web, "directAccessGrantsEnabled": False})
-        print(f"\nRestored accessTokenLifespan={orig_lifespan}s, directAccessGrantsEnabled={orig_direct}")
+        set_lifespan(orig_lifespan)
+        print(f"\nRestored OBO token lifespan={orig_lifespan or 'realm default'}s")
 
     sys.exit(0 if fresh_ok and ok else 1)
 

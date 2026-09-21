@@ -81,6 +81,7 @@ deploy:
 	-./ensure-litellm-pep-vault-role.sh
 	$(KC) apply -f $(DEPLOY_DIR)/service-intentions.yaml || true
 	$(KC) create secret generic token-exchange-env --from-file=.env=$(DEPLOY_DIR)/token-exchange.env --dry-run=client -o yaml | $(KC) apply -f -
+	$(KC) create configmap vault-ca --from-file=ca.crt=generated/ca.crt --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/token-exchange.yaml
 	$(KC) create secret generic user-mcp-env --from-file=.env=$(DEPLOY_DIR)/user-mcp.env --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/user-mcp.yaml
