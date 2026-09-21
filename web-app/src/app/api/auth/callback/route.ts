@@ -9,6 +9,7 @@ import {
   setSession,
 } from '@/lib/auth/session';
 import { timingSafeEqualString } from '@/lib/auth/pkce';
+import { STEP_UP_CHANNEL, STEP_UP_STATE_PREFIX, type StepUpResult } from '@/lib/auth/step-up';
 import { withRequestContext } from '@/lib/log/with-request-context';
 import { setPreferredUsername } from '@/lib/log/context';
 import { getLogger } from '@/lib/log/logger';
@@ -27,6 +28,17 @@ function browserOrigin(req: Request, fallback: string): string {
   return `${proto}://${host}`;
 }
 
+// Page the step-up popup lands on: tell the chat tab how it went, then close.
+function stepUpPopupResponse(result: StepUpResult): NextResponse {
+  const html = `<!doctype html><meta charset="utf-8"><title>Verification</title>
+<p>${result === 'complete' ? 'Verified. You can close this window.' : 'Verification did not complete. You can close this window.'}</p>
+<script>
+  try { const ch = new BroadcastChannel(${JSON.stringify(STEP_UP_CHANNEL)}); ch.postMessage(${JSON.stringify(result)}); ch.close(); } catch (e) {}
+  window.close();
+</script>`;
+  return new NextResponse(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
 export const GET = withRequestContext(async (req) => {
   const url = new URL(req.url);
   const origin = browserOrigin(req, url.origin);
@@ -34,8 +46,11 @@ export const GET = withRequestContext(async (req) => {
   const stateParam = url.searchParams.get('state');
   const errorParam = url.searchParams.get('error');
 
+  const isStepUp = !!stateParam?.startsWith(STEP_UP_STATE_PREFIX);
+
   if (errorParam) {
     log.warn({ error: errorParam }, 'OAuth provider returned an error');
+    if (isStepUp) return stepUpPopupResponse('failed');
     return NextResponse.redirect(new URL('/?error=' + encodeURIComponent(errorParam), origin));
   }
 
@@ -51,6 +66,7 @@ export const GET = withRequestContext(async (req) => {
     log.warn('State or PKCE verifier missing/mismatch');
     await clearStateCookie();
     await clearPkceCookie();
+    if (isStepUp) return stepUpPopupResponse('failed');
     return new NextResponse('Invalid OAuth state', { status: 400 });
   }
 
@@ -79,12 +95,14 @@ export const GET = withRequestContext(async (req) => {
     await clearStateCookie();
     await clearPkceCookie();
 
-    log.info('Authentication completed successfully');
+    log.info({ stepUp: isStepUp }, 'Authentication completed successfully');
+    if (isStepUp) return stepUpPopupResponse('complete');
     return NextResponse.redirect(new URL('/landing', origin), { status: 302 });
   } catch (err) {
     log.error({ err: String(err) }, 'OAuth callback failed');
     await clearStateCookie();
     await clearPkceCookie();
+    if (isStepUp) return stepUpPopupResponse('failed');
     return new NextResponse('Authentication failed', { status: 500 });
   }
 });
