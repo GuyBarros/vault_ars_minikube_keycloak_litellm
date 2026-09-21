@@ -7,9 +7,11 @@ const log = getLogger('auth.oauth');
 export interface AuthorizeUrlInput {
   state: string;
   codeChallenge: string;
+  /** Requested level of assurance; "2" makes Keycloak step up (OTP) on top of the SSO session. */
+  acr?: string;
 }
 
-export function buildAuthorizeUrl({ state, codeChallenge }: AuthorizeUrlInput): string {
+export function buildAuthorizeUrl({ state, codeChallenge, acr }: AuthorizeUrlInput): string {
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: config.KEYCLOAK_CLIENT_ID,
@@ -19,6 +21,7 @@ export function buildAuthorizeUrl({ state, codeChallenge }: AuthorizeUrlInput): 
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   });
+  if (acr) params.set('acr_values', acr);
   return `${oidc.authorizeUrl}?${params.toString()}`;
 }
 

@@ -69,14 +69,19 @@ HELM() { helm --kube-context "$PROFILE" "$@"; }
 
 echo "=== 1. minikube ($PROFILE) ==="
 if ! minikube status -p "$PROFILE" >/dev/null 2>&1; then
-  # Prefer a real Docker engine (Colima / Docker Desktop). Fall back to
-  # Podman when `docker` is only a Podman shim (minikube's Docker preflight
-  # rejects that).
-  DRIVER=docker
-  if ! docker info >/dev/null 2>&1; then
-    DRIVER=podman
-  elif docker version -f '{{.Server.Platform.Name}}' 2>/dev/null | grep -qi podman; then
-    DRIVER=podman
+  if [ -n "${MINIKUBE_DRIVER:-}" ]; then
+    # Explicit override (env var or local-config.sh): skip auto-detection.
+    DRIVER="$MINIKUBE_DRIVER"
+  else
+    # Prefer a real Docker engine (Colima / Docker Desktop). Fall back to
+    # Podman when `docker` is only a Podman shim (minikube's Docker preflight
+    # rejects that).
+    DRIVER=docker
+    if ! docker info >/dev/null 2>&1; then
+      DRIVER=podman
+    elif docker version -f '{{.Server.Platform.Name}}' 2>/dev/null | grep -qi podman; then
+      DRIVER=podman
+    fi
   fi
   echo "minikube driver: $DRIVER"
   minikube start -p "$PROFILE" \
@@ -130,10 +135,15 @@ KC -n "$CONSUL_NAMESPACE" create secret generic vault-ca \
   --from-file=ca.crt="$GEN_DIR/ca.crt" --dry-run=client -o yaml | KC apply -f -
 helm repo add hashicorp https://helm.releases.hashicorp.com >/dev/null 2>&1 || true
 helm repo update hashicorp >/dev/null
+# prometheus.enabled installs the chart's demo Prometheus, which scrapes the
+# Envoy sidecars' latency histograms and backs the Consul UI's service metrics
+# (ui.metrics defaults to http://prometheus-server). Set here rather than in
+# the shared template so the AWS module is unaffected.
 HELM upgrade --install consul hashicorp/consul \
   --namespace "$CONSUL_NAMESPACE" \
   --version "$CONSUL_CHART_VERSION" \
   --values "$GEN_DIR/consul-values.yaml" \
+  --set prometheus.enabled=true \
   --wait --timeout 15m
 
 # deploy-k8s manifests (ai-agent, web-app, ciba-channel, consul-mcp-authz) all

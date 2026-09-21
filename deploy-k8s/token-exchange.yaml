@@ -26,6 +26,9 @@ spec:
               mountPath: /app/.env
               subPath: .env
               readOnly: true
+            - name: vault-ca
+              mountPath: /etc/vault-ca
+              readOnly: true
           resources:
             limits:
               memory: "200Mi"
@@ -37,6 +40,9 @@ spec:
         - name: token-exchange-env
           secret:
             secretName: token-exchange-env
+        - name: vault-ca
+          configMap:
+            name: vault-ca
 ---
 apiVersion: v1
 kind: Service

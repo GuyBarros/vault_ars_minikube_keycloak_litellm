@@ -17,7 +17,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from mesh_identity import UNAVAILABLE, consul_identity, spiffe_id
+
 DIR = Path(__file__).resolve().parent
+CONSUL_TOKEN_FILE = DIR.parent / "infra/local-minikube/generated/consul_token"
 WORKLOADS = (
     ("default", "deploy/web", "web", "web"),
     ("default", "deploy/ai-agent", "ai-agent", "ai-agent"),
@@ -95,7 +98,20 @@ def kubectl_json(args: list[str]) -> dict | list | None:
         return None
 
 
+MESH_IDENTITY: list[tuple[str, str]] = []  # cached (trust domain, datacenter); only kept once Consul answered
+
+
+def mesh_identity() -> tuple[str, str]:
+    if MESH_IDENTITY:
+        return MESH_IDENTITY[0]
+    found = consul_identity(KC, CONSUL_TOKEN_FILE)
+    if found[0] != UNAVAILABLE:
+        MESH_IDENTITY.append(found)
+    return found
+
+
 def build_snapshot() -> dict:
+    trust_domain, datacenter = mesh_identity()
     identities = []
     for spec in SPIFFE_SERVICES:
         ns, svc = spec.split("/", 1)
@@ -103,7 +119,7 @@ def build_snapshot() -> dict:
             {
                 "service": svc,
                 "namespace": ns,
-                "spiffe_id": f"spiffe://dc1.consul/ns/{ns}/dc/dc1/svc/{svc}",
+                "spiffe_id": spiffe_id(trust_domain, datacenter, ns, svc),
                 "mint": "consul-connect SVID (sidecar consul-dataplane)",
             }
         )
@@ -123,7 +139,7 @@ def build_snapshot() -> dict:
                 )
     return {
         "collected_at": now_iso(),
-        "trust_domain": "dc1.consul",
+        "trust_domain": trust_domain,
         "identities": identities,
         "intentions": intentions,
         "catalog": None,

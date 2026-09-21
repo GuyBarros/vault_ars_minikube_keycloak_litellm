@@ -21,6 +21,9 @@ const schema = z.object({
   KEYCLOAK_REDIRECT_URI: z.string().url('KEYCLOAK_REDIRECT_URI must be a valid URL'),
   KEYCLOAK_LOGOUT_URI: z.string().url('KEYCLOAK_LOGOUT_URI must be a valid URL').optional(),
   KEYCLOAK_SCOPES: z.string().default('openid profile email Agent.Invoke'),
+  // How long a level-2 step-up lasts after the OTP. The LiteLLM PEP enforces it
+  // (PEP_LOA2_MAX_AGE_SECONDS); this only drives the countdown, so keep them equal.
+  STEP_UP_TTL_SECONDS: z.coerce.number().int().min(1).default(300),
   AI_AGENT_API_URL: z
     .string()
     .default('')

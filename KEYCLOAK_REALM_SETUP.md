@@ -20,7 +20,7 @@ against it. Re-running it is idempotent.
 |--------|---------|
 | `web` | Browser OIDC login (Authorization Code + PKCE) |
 | `litellm` | LiteLLM admin UI SSO (Authorization Code + PKCE) |
-| `token-exchange` | RFC 8693 token-exchange broker used by `token-exchange` |
+| `change` | RFC 8693 change broker used by `token-exchange` |
 | `ciba-client` | Starts CIBA when Vault policy requires human approval before a write |
 | `user-mcp` | Resource server — the audience for exchanged/CIBA tokens |
 

@@ -460,7 +460,7 @@ SQL que o Vault aplica (TTL 1 h, max 24 h):
 | Role | GRANT |
 | --- | --- |
 | `user-mcp-read-role` | `CONNECT`, `USAGE` schema, `SELECT` em `users` |
-| `user-mcp-write-role` | `SELECT, INSERT, UPDATE, DELETE` em `users` |
+| `user-mcp-write-role` | `SELECT, INSERT, UPDATE` em `users` (sem `DELETE`) |
 
 403/400 do Vault → user-mcp responde **403** `invalid_request`. Sem JWT no context → **401**. Falha de transporte → **502**. Lease revogado no `finally`.
 

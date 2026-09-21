@@ -369,6 +369,12 @@ def create_app(
             request.app.state.token_service.read_actor_token()
         bind_log_context(preferred_username=preferred_username)
 
+        # A step-up prompt belongs to the query that hit it, not to later ones.
+        tracker = request.app.state.assurance_tracker
+        last = tracker.get_last(access_token) if access_token else None
+        if last and last.get("decision") == "STEP_UP_REQUIRED":
+            tracker.discard(access_token)
+
         runtime = request.app.state.agent_runtime
         if runtime is None:
             scoped_tools = _wrap_mcp_tools_with_per_call_obo(

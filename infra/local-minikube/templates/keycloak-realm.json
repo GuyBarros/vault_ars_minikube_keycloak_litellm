@@ -15,6 +15,9 @@
   "resetPasswordAllowed": false,
   "editUsernameAllowed": false,
   "bruteForceProtected": false,
+  "eventsEnabled": true,
+  "eventsListeners": ["jboss-logging"],
+  "eventsExpiration": 604800,
   "accessTokenLifespan": 28800,
   "ssoSessionIdleTimeout": 28800,
   "ssoSessionMaxLifespan": 36000,
@@ -158,7 +161,8 @@
       "attributes": {
         "token.exchange.grant.enabled": "true",
         "standard.token.exchange.enabled": "true",
-        "access.token.header.type.rfc9068": "true"
+        "access.token.header.type.rfc9068": "true",
+        "access.token.lifespan": "300"
       },
       "optionalClientScopes": [
         "users.read",
@@ -606,6 +610,11 @@
           "type": "password",
           "value": "user",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "secretData": "{\"value\":\"ZKQBUTGOXKDBTOLK\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"period\":30,\"algorithm\":\"HmacSHA1\",\"secretEncoding\":\"BASE32\"}"
         }
       ],
       "groups": ["reader"]
@@ -622,6 +631,11 @@
           "type": "password",
           "value": "writer",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "secretData": "{\"value\":\"ANMRZF24L6FUGPNW\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"period\":30,\"algorithm\":\"HmacSHA1\",\"secretEncoding\":\"BASE32\"}"
         }
       ],
       "groups": ["writer"]
@@ -638,6 +652,11 @@
           "type": "password",
           "value": "admin",
           "temporary": false
+        },
+        {
+          "type": "otp",
+          "secretData": "{\"value\":\"3XGBWMZ7PS4H43IH\"}",
+          "credentialData": "{\"subType\":\"totp\",\"digits\":6,\"period\":30,\"algorithm\":\"HmacSHA1\",\"secretEncoding\":\"BASE32\"}"
         }
       ],
       "groups": ["admin"]

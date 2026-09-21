@@ -150,6 +150,16 @@ for i in $(seq 1 60); do
   sleep 3
 done
 
+# ---- 5b. Keycloak Level of Authentication: password = LoA 1, OTP = LoA 2 ----
+KC port-forward svc/keycloak 18091:8080 >"$GEN_DIR/pf-keycloak-loa.log" 2>&1 &
+KC_LOA_PF_PID=$!
+for i in $(seq 1 30); do
+  curl -s -o /dev/null http://localhost:18091/realms/demo/.well-known/openid-configuration && break; sleep 1
+done
+python3 "$SCRIPT_DIR/keycloak_loa.py" --url http://localhost:18091 \
+  --admin-password-file "$GEN_DIR/keycloak_admin_password"
+kill "$KC_LOA_PF_PID" 2>/dev/null || true
+
 # ---- 6. Vault: jwt-keycloak auth (CIBA-policy probe) + OAuth Resource
 #         Server + Agent Registry ----
 KC -n vault port-forward svc/vault 18200:8200 >"$GEN_DIR/pf-vault-keycloak.log" 2>&1 &
@@ -229,8 +239,23 @@ vault policy write ciba-write - <<-EOT
 
 jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["reader", "writer", "admin"], scope: "*users.read*"}, token_policies: ["ciba-list-users"], token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
   | vault write auth/jwt-keycloak/role/user-mcp-oidc-read -
-jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["writer", "admin"], scope: "*users.write*"}, token_policies: ["ciba-write"], token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
+jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["writer", "admin"], scope: "*users.write*", acr: "2"}, token_policies: ["ciba-write"], token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
   | vault write auth/jwt-keycloak/role/user-mcp-oidc-write -
+# The write role binds acr=2, which Keycloak only issues after a step-up login
+# with OTP. user-mcp logs in with it for elevated actions, so Vault itself
+# validates the step-up. The role name is un-HMAC'd in the audit log.
+vault auth tune -audit-non-hmac-request-keys=role -audit-non-hmac-response-keys=metadata jwt-keycloak
+
+# Vault's TOTP secrets engine is the users' authenticator: one key per demo
+# user, using the secret of the otp credential in the realm (the rendered
+# realm file is the single source), so `vault read totp/code/<user>` returns the
+# code Keycloak asks for at LoA 2.
+vault secrets list -format=json | jq -e 'has("totp/")' >/dev/null || vault secrets enable totp
+for user in user writer admin; do
+  otp_secret=$(jq -r --arg u "$user" '.users[] | select(.username == $u) | .credentials[] | select(.type == "otp") | .secretData | fromjson | .value' "$GEN_DIR/keycloak-realm.json")
+  vault write "totp/keys/$user" key="$otp_secret" issuer=Keycloak account_name="$user" \
+    algorithm=SHA1 digits=6 period=30 generate=false
+done
 
 echo "=== Vault 2.1 native Agentic IAM (OAuth Resource Server + Agent Registry) ==="
 if vault read sys/activation-flags >/dev/null 2>&1 && vault read sys/activation-flags | grep -q "oauth-resource-server"; then

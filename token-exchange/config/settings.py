@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     # When set, TLS verification uses this bundle instead of the default certifi roots.
     vault_ca_bundle: str | None = None
 
+    # Validation of the Vault-signed actor token (see keycloak/actor_token.py). The
+    # issuer is the identity/oidc issuer Vault puts in `iss` (its keys are read from
+    # <issuer>/.well-known/keys); the audience is the Vault OIDC role's client_id.
+    # Both are required: with either unset every exchange is refused.
+    actor_issuer: str = ""
+    actor_audience: str = ""
+
     # Keycloak OBO token exchange settings.
     keycloak_url: str = ""
     keycloak_realm: str = "demo"
