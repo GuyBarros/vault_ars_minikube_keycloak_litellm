@@ -26,6 +26,16 @@ class OBOTokenRequest(BaseModel):
     )
 
 
+class SubjectStatusRequest(BaseModel):
+    subject_token: str = Field(..., min_length=1, description="Caller's access token (JWT) to check")
+
+
+class SubjectStatusResponse(BaseModel):
+    active: bool = Field(
+        ..., description="False once the token was revoked or its Keycloak session ended"
+    )
+
+
 class OBOTokenResponse(BaseModel):
     access_token: str = Field(
         ..., description="Keycloak access token issued on behalf of the subject"

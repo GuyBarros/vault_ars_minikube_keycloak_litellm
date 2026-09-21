@@ -453,7 +453,14 @@ def test_mcp_request_headers_carry_no_litellm_credential():
 
 def _build_settings(tmp_path):
     actor_token_path = tmp_path / "actor"
-    actor_token_path.write_text("actor-token", encoding="utf-8")
+    import time
+
+    import jwt
+
+    # The agent checks the actor token's exp, so it has to be a JWT.
+    actor_token_path.write_text(
+        jwt.encode({"exp": int(time.time()) + 3600}, "k", algorithm="HS256"), encoding="utf-8"
+    )
     return type(agent_api.SETTINGS)(
         model="x",
         ollama_base_url=None,

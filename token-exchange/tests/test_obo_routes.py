@@ -142,3 +142,24 @@ class TestExchangeOBOToken:
                 },
             )
         assert resp.status_code == 422
+
+
+class TestSubjectStatus:
+    async def test_active(self, async_client):
+        with patch("api.routes._obo_broker.subject_is_active", return_value=True):
+            async with async_client as client:
+                resp = await client.post("/v1/identity/subject-status", json={"subject_token": "eyJ.subject.token"})
+        assert resp.status_code == 200
+        assert resp.json() == {"active": True}
+
+    async def test_revoked(self, async_client):
+        with patch("api.routes._obo_broker.subject_is_active", return_value=False):
+            async with async_client as client:
+                resp = await client.post("/v1/identity/subject-status", json={"subject_token": "eyJ.subject.token"})
+        assert resp.json() == {"active": False}
+
+    async def test_unavailable_keycloak_is_a_503_not_an_answer(self, async_client):
+        with patch("api.routes._obo_broker.subject_is_active", side_effect=VerifyTokenExchangeError("down")):
+            async with async_client as client:
+                resp = await client.post("/v1/identity/subject-status", json={"subject_token": "eyJ.subject.token"})
+        assert resp.status_code == 503

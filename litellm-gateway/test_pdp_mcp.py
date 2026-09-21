@@ -4,6 +4,7 @@ import asyncio
 import time
 
 from pdp_mcp import (
+    KeycloakIntrospector,
     ALLOW,
     LOA2_MAX_AGE_SECONDS,
     McpPep,
@@ -30,6 +31,17 @@ class _Validator:
         return self.claims
 
 
+class _Introspector:
+    def __init__(self, active=True, error=None):
+        self.active, self.error, self.calls = active, error, []
+
+    async def is_active(self, token):
+        self.calls.append(token)
+        if self.error:
+            raise self.error
+        return self.active
+
+
 class _Opa:
     def __init__(self, result: dict):
         self.result = result
@@ -40,7 +52,7 @@ class _Opa:
         return self.result
 
 
-def _pep(*, opa_result: dict, claims=None) -> McpPep:
+def _pep(*, opa_result: dict, claims=None, introspector=None) -> McpPep:
     return McpPep(
         source="default/litellm-gateway",
         dest="default/user-mcp",
@@ -52,6 +64,7 @@ def _pep(*, opa_result: dict, claims=None) -> McpPep:
             }
         ),
         opa=_Opa(opa_result),
+        introspector=introspector or _Introspector(),
     )
 
 
@@ -149,14 +162,14 @@ def test_authorize_requires_step_up_when_opa_says_so(capsys):
     assert payload["enforce"] == "step_up_login"
 
 
-def test_authorize_denies_delete_before_opa_and_ciba():
-    opa = _Opa({"allow": True, "ciba_required": True, "reason": "step-up"})
+def test_authorize_denies_delete_before_opa():
+    opa = _Opa({"allow": True, "required_loa": 2, "reason": "loa2"})
     pep = McpPep(
         source="default/litellm-gateway",
         dest="default/user-mcp",
         jwt_validator=_Validator({"preferred_username": "writer", "scope": "users.write"}),
         opa=opa,
-        ciba=_Ciba(),
+        introspector=_Introspector(),
     )
     try:
         asyncio.run(pep.authorize("delete_user_by_email", "obo-jwt"))
@@ -225,3 +238,67 @@ def test_guardrail_hook_raises_on_deny():
         raise AssertionError("expected Exception")
     except Exception as exc:
         assert "not allowed" in str(exc)
+
+
+def test_authorize_refuses_a_token_keycloak_says_is_no_longer_active(capsys):
+    introspector = _Introspector(active=False)
+    pep = _pep(opa_result={"allow": True, "reason": "allow"}, introspector=introspector)
+    try:
+        asyncio.run(pep.authorize("list_all_users", "Bearer obo-jwt"))
+        raise AssertionError("expected PepDenied")
+    except PepDenied as exc:
+        assert exc.error == "token_revoked"
+    assert pep._opa.calls == []  # refused before OPA is asked
+    payload = __import__("json").loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert payload["PDP_Decision"] == "DENY" and payload["reason"] == "token_revoked"
+
+
+def test_authorize_asks_keycloak_about_the_token_it_was_given():
+    introspector = _Introspector()
+    pep = _pep(opa_result={"allow": True, "reason": "allow"}, introspector=introspector)
+    asyncio.run(pep.authorize("list_all_users", "Bearer obo-jwt"))
+    assert introspector.calls == ["obo-jwt"]
+
+
+def test_authorize_fails_closed_when_keycloak_cannot_be_asked():
+    introspector = _Introspector(error=PepDenied("down", error="introspection_unavailable"))
+    pep = _pep(opa_result={"allow": True, "reason": "allow"}, introspector=introspector)
+    try:
+        asyncio.run(pep.authorize("list_all_users", "Bearer obo-jwt"))
+        raise AssertionError("expected PepDenied")
+    except PepDenied as exc:
+        assert exc.error == "introspection_unavailable"
+    assert pep._opa.calls == []
+
+
+def _introspection_transport(handler):
+    import httpx
+
+    return httpx.MockTransport(handler)
+
+
+def test_introspector_posts_the_token_as_the_client_and_reads_active():
+    import httpx
+
+    seen = {}
+
+    def handler(request):
+        seen["form"] = dict(httpx.QueryParams(request.content.decode()))
+        return httpx.Response(200, json={"active": False})
+
+    introspector = KeycloakIntrospector("http://kc/introspect", "user-mcp", "s3cret", transport=_introspection_transport(handler))
+    assert asyncio.run(introspector.is_active("tok")) is False
+    assert seen["form"] == {"token": "tok", "client_id": "user-mcp", "client_secret": "s3cret"}
+
+
+def test_introspector_refuses_when_keycloak_errors_or_is_unconfigured():
+    import httpx
+
+    failing = KeycloakIntrospector("http://kc/i", "c", "s", transport=_introspection_transport(lambda r: httpx.Response(500)))
+    unconfigured = KeycloakIntrospector("http://kc/i", "c", "")
+    for introspector, error in ((failing, "introspection_unavailable"), (unconfigured, "configuration_error")):
+        try:
+            asyncio.run(introspector.is_active("tok"))
+            raise AssertionError("expected PepDenied")
+        except PepDenied as exc:
+            assert exc.error == error

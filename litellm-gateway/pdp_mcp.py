@@ -36,13 +36,15 @@ REQUIRED_SCOPES = {
     "create_user": ("users.write",),
     "update_user_by_email": ("users.write",),
 }
-LOA2_TOOLS = frozenset({"create_user", "delete_user_by_email"})
+LOA2_TOOLS = frozenset({"create_user"})
+# The agent must never reach delete, even with users.write and a step-up.
+DISABLED_TOOLS = frozenset({"delete_user_by_email"})
 PDP_PACKAGE = "mcp.pep"
 PDP_PATH = "/v1/data/mcp/pep/decision"
 PDP_POLICY = (
     "mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) "
     "+ required_scopes[tool] subset of JWT scope "
-    "+ loa2_tools={create_user,delete_user_by_email} need acr>=2"
+    "+ loa2_tools={create_user} need acr>=2; delete_user_by_email denied in pdp_mcp"
 )
 
 try:
@@ -244,6 +246,52 @@ class KeycloakJwtValidator:
             raise PepDenied(f"Token is invalid: {exc}", error="invalid_token") from exc
 
 
+class KeycloakIntrospector:
+    """Ask Keycloak whether a token is still active (RFC 7662): not revoked, and its
+    session not ended. The JWT's own signature and expiry say nothing about either,
+    so without this a revoked or logged-out user's OBO token keeps working until it
+    expires. Keycloak only answers for tokens whose audience names the calling
+    client, hence the user-mcp client (the OBO token's audience)."""
+
+    def __init__(
+        self,
+        url: str,
+        client_id: str,
+        client_secret: str,
+        timeout_seconds: float = 5.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
+        self._url = url
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._timeout = httpx.Timeout(timeout_seconds)
+        self._transport = transport
+
+    async def is_active(self, token: str) -> bool:
+        if not (self._url and self._client_id and self._client_secret):
+            raise PepDenied(
+                "PEP_KEYCLOAK_INTROSPECT_URL, PEP_INTROSPECT_CLIENT_ID and PEP_INTROSPECT_CLIENT_SECRET "
+                "are required to check that a token is still active.",
+                error="configuration_error",
+            )
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout, transport=self._transport) as client:
+                resp = await client.post(
+                    self._url,
+                    data={"token": token, "client_id": self._client_id, "client_secret": self._client_secret},
+                )
+        except httpx.HTTPError as exc:
+            raise PepDenied(
+                f"Keycloak introspection failed (transport): {exc}", error="introspection_unavailable"
+            ) from exc
+        if resp.status_code >= 400:
+            raise PepDenied(
+                f"Keycloak introspection failed (status={resp.status_code})", error="introspection_unavailable"
+            )
+        body = resp.json() if resp.content else {}
+        return bool(body.get("active")) if isinstance(body, dict) else False
+
+
 class OpaPdp:
     """Query opa-server for the MCP tools/call decision."""
 
@@ -340,19 +388,22 @@ class McpPep:
         dest: str,
         jwt_validator: Any,
         opa: OpaPdp,
+        introspector: KeycloakIntrospector,
     ):
         self._source = source
         self._dest = dest
         self._jwt_validator = jwt_validator
         self._opa = opa
+        self._introspector = introspector
 
     @classmethod
     def from_env(cls) -> "McpPep":
+        jwks_url = os.getenv("PEP_KEYCLOAK_JWKS_URL", "")
         return cls(
             source=os.getenv("PEP_MCP_SOURCE", "default/litellm-gateway"),
             dest=os.getenv("PEP_MCP_DEST", "default/user-mcp"),
             jwt_validator=KeycloakJwtValidator(
-                jwks_url=os.getenv("PEP_KEYCLOAK_JWKS_URL", ""),
+                jwks_url=jwks_url,
                 audience=os.getenv("PEP_MCP_AUDIENCE", "user-mcp"),
                 issuer=os.getenv("PEP_MCP_ISSUER", ""),
             ),
@@ -361,6 +412,12 @@ class McpPep:
                 decision_path=os.getenv(
                     "PEP_OPA_DECISION_PATH", "/v1/data/mcp/pep/decision"
                 ),
+            ),
+            introspector=KeycloakIntrospector(
+                # Keycloak's introspection endpoint sits next to the JWKS one.
+                url=os.getenv("PEP_KEYCLOAK_INTROSPECT_URL") or jwks_url.replace("/certs", "/token/introspect"),
+                client_id=os.getenv("PEP_INTROSPECT_CLIENT_ID", "user-mcp"),
+                client_secret=os.getenv("PEP_INTROSPECT_CLIENT_SECRET", ""),
             ),
         )
 
@@ -400,6 +457,28 @@ class McpPep:
         user = identity.get("preferred_username") or ""
         if not user:
             raise PepDenied("Token is missing preferred_username.", error="invalid_token")
+
+        # Ask Keycloak, not just the signature: a revoked token, or one whose session has ended,
+        # is refused now instead of when it expires.
+        if not await self._introspector.is_active(token):
+            _log_pdp_decision(
+                tool_name=tool_name,
+                decision=DENY,
+                current_loa=LOA_BASELINE,
+                required_loa=LOA_BASELINE,
+                request_id=request_id,
+                enforce="deny",
+                reason="token_revoked",
+                allow=False,
+                preferred_username=user,
+                catalog_source=self._source,
+                catalog_dest=self._dest,
+                pdp_path=getattr(self._opa, "_url", PDP_PATH),
+            )
+            raise PepDenied(
+                "Token is no longer active (it was revoked, or its Keycloak session has ended).",
+                error="token_revoked",
+            )
 
         # LoA comes from the user's JWT (Keycloak's `acr`): 2 only after a step-up login with OTP.
         token_loa = effective_loa(claims)

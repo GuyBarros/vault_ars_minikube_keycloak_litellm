@@ -342,6 +342,37 @@ class OboTokenService:
     def read_actor_token(self) -> str:
         return read_actor_token(self.settings.actor_token_path, self.logger)
 
+    def subject_is_active(self, subject_token: str, request_id: str) -> bool:
+        """Ask token-exchange (which asks Keycloak) whether *subject_token* is still active.
+
+        The agent only reads the token's exp/nbf, and caches the OBO tokens it obtains, so
+        without this a revoked login token keeps working until the cache entry expires.
+        Fails closed: if the answer can't be had, the request is refused.
+        """
+        url = self.settings.token_exchange_url.rsplit("/", 1)[0] + "/subject-status"
+        request = urllib.request.Request(
+            url,
+            data=json.dumps({"subject_token": subject_token}).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Accept": "application/json", "X-Request-ID": request_id},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=self.settings.token_exchange_timeout_seconds) as response:
+                return bool(json.loads(response.read().decode("utf-8")).get("active"))
+        except (urllib.error.URLError, json.JSONDecodeError, ValueError) as exc:
+            log_event(
+                self.logger,
+                "subject_status_check_failed",
+                level=logging.WARNING,
+                message=f"Could not check whether the bearer token is still active: {exc}",
+                request_id=request_id,
+            )
+            raise AppError(
+                status_code=502,
+                error="token_exchange_failed",
+                message="Could not verify that the bearer token is still active.",
+            ) from exc
+
     def resolve_token(
         self,
         subject_token: str,

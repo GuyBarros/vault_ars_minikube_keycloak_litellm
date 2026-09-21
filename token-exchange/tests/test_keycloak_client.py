@@ -1,6 +1,10 @@
 """Unit tests for the KeycloakTokenExchangeClient HTTP layer."""
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests
+
+from exceptions.errors import VerifyTokenExchangeError
 from keycloak.keycloak_client import KeycloakTokenExchangeClient
 
 
@@ -48,3 +52,37 @@ class TestExchangeOBOToken:
         logged_payload = mock_logger.debug.call_args.kwargs["payload"]
         assert logged_payload["client_secret"] == "<redacted>"
         assert logged_payload["client_id"] == "the-client-id"
+
+
+class TestIsTokenActive:
+    def _client(self):
+        return KeycloakTokenExchangeClient(
+            base_url="https://keycloak.example.com", realm="demo", audience="user-mcp",
+            client_id="the-client-id", client_secret="the-client-secret",
+        )
+
+    def _response(self, body, ok=True, status=200):
+        response = MagicMock()
+        response.ok, response.status_code = ok, status
+        response.json.return_value = body
+        return response
+
+    def test_introspects_as_the_exchange_client(self):
+        with patch("keycloak.keycloak_client.requests.post", return_value=self._response({"active": True})) as post:
+            assert self._client().is_token_active("subject-tok") is True
+        assert post.call_args.args[0] == "https://keycloak.example.com/realms/demo/protocol/openid-connect/token/introspect"
+        assert post.call_args.kwargs["data"] == {
+            "token": "subject-tok", "client_id": "the-client-id", "client_secret": "the-client-secret",
+        }
+
+    def test_a_revoked_or_ended_session_token_is_not_active(self):
+        with patch("keycloak.keycloak_client.requests.post", return_value=self._response({"active": False})):
+            assert self._client().is_token_active("subject-tok") is False
+
+    def test_fails_closed_when_keycloak_cannot_be_asked(self):
+        with patch("keycloak.keycloak_client.requests.post", side_effect=requests.exceptions.ConnectionError("down")):
+            with pytest.raises(VerifyTokenExchangeError):
+                self._client().is_token_active("subject-tok")
+        with patch("keycloak.keycloak_client.requests.post", return_value=self._response({}, ok=False, status=500)):
+            with pytest.raises(VerifyTokenExchangeError):
+                self._client().is_token_active("subject-tok")

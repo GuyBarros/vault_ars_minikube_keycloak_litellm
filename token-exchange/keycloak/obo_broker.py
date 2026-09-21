@@ -8,7 +8,7 @@ import tenacity.wait
 
 from broker.cache import TokenCache
 from keycloak.actor_token import ActorTokenValidator
-from exceptions.errors import VerifyTokenExchangeError
+from exceptions.errors import VerifyAuthenticationError, VerifyTokenExchangeError
 from app_logging.logger import get_logger
 from keycloak.authorization import authorize_scope
 from keycloak.keycloak_client import KeycloakTokenExchangeClient
@@ -49,6 +49,10 @@ class OBOBroker:
         self._cache = cache or TokenCache()
         self._actor_validator = actor_validator or ActorTokenValidator.from_settings()
 
+    def subject_is_active(self, subject_token: str) -> bool:
+        """Whether Keycloak still considers *subject_token* active (see the client's is_token_active)."""
+        return self._client.is_token_active(subject_token)
+
     def exchange_obo_token(
         self, subject_token: str, actor_token: str, scope: str
     ) -> OBOTokenResult:
@@ -69,13 +73,20 @@ class OBOBroker:
 
         Raises:
             VerifyAuthorizationError:   Caller's groups don't entitle the requested scope.
-            VerifyAuthenticationError:  actor_token isn't a valid Vault identity token, or
-                                        Keycloak rejected the request.
+            VerifyAuthenticationError:  actor_token isn't a valid Vault identity token,
+                                        subject_token was revoked (or its session ended),
+                                        or Keycloak rejected the request.
             VerifyTokenExchangeError:   Keycloak could not complete the exchange.
             CacheError:                 Unexpected cache failure.
         """
         start = time.monotonic()
         actor_claims = self._actor_validator.validate(actor_token)
+        # Checked on every exchange, cached or not: a cached OBO token must not outlive
+        # the revocation of the subject token it was issued for.
+        if not self.subject_is_active(subject_token):
+            raise VerifyAuthenticationError(
+                "subject_token is not active (it was revoked, or its session has ended)"
+            )
         authorize_scope(subject_token, scope)
         preferred_username = claim_from_token(subject_token, "preferred_username")
         agent_id = actor_claims.get("agent_id")

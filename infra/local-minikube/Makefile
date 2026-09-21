@@ -90,6 +90,7 @@ deploy:
 	[ -f generated/keycloak_client_secret_litellm ] || { echo "missing generated/keycloak_client_secret_litellm (run make keycloak)"; exit 1; }
 	[ -f generated/litellm_db_password ] || { echo "missing generated/litellm_db_password (run make keycloak)"; exit 1; }
 	[ -f generated/keycloak_client_secret_ciba ] || { echo "missing generated/keycloak_client_secret_ciba (run make keycloak)"; exit 1; }
+	[ -f generated/keycloak_client_secret_user_mcp ] || { echo "missing generated/keycloak_client_secret_user_mcp (run make keycloak)"; exit 1; }
 	$(KC) create secret generic litellm-gateway-env \
 	  --from-literal=LITELLM_MASTER_KEY=$$(cat generated/litellm_master_key) \
 	  --from-literal=OPENAI_API_KEY=$${OPENAI_API_KEY:-} \
@@ -112,6 +113,8 @@ deploy:
 	  --from-literal=PEP_SUBJECT_ISSUER=http://localhost:8081/realms/demo \
 	  --from-literal=PEP_SUBJECT_AUDIENCE=token-exchange \
 	  --from-literal=PEP_KEYCLOAK_JWKS_URL=http://keycloak.virtual.consul/realms/demo/protocol/openid-connect/certs \
+	  --from-literal=PEP_INTROSPECT_CLIENT_ID=user-mcp \
+	  --from-literal=PEP_INTROSPECT_CLIENT_SECRET=$$(cat generated/keycloak_client_secret_user_mcp) \
 	  --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) create configmap litellm-gateway-config \
 	  --from-file=config.yaml=$(REPO_ROOT)/litellm-gateway/config.yaml \

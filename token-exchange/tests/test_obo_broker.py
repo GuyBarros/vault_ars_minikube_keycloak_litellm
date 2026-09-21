@@ -252,3 +252,33 @@ class TestActorTokenValidation:
         broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=validator)
         with pytest.raises(VerifyAuthenticationError):
             broker.exchange_obo_token(subject_token, "actor-tok", "users.read")
+
+
+class TestSubjectTokenRevocation:
+    def test_a_revoked_subject_token_is_refused_before_keycloak_is_asked_to_exchange(self, mock_verify_client, fresh_cache):
+        mock_verify_client.is_token_active.return_value = False
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
+
+        with pytest.raises(VerifyAuthenticationError, match="not active"):
+            broker.exchange_obo_token(_admin_jwt(), "actor-tok", "users.read")
+
+        mock_verify_client.exchange_obo_token.assert_not_called()
+
+    def test_revocation_beats_a_warm_cache(self, mock_verify_client, fresh_cache):
+        """The OBO token cached for a subject must not be served once that subject was revoked."""
+        subject_token = _admin_jwt()
+        mock_verify_client.exchange_obo_token.return_value = {"access_token": _make_jwt()}
+        mock_verify_client.is_token_active.return_value = True
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
+        assert broker.exchange_obo_token(subject_token, "actor-tok", "users.read").cached is False
+        assert broker.exchange_obo_token(subject_token, "actor-tok", "users.read").cached is True
+
+        mock_verify_client.is_token_active.return_value = False
+        with pytest.raises(VerifyAuthenticationError, match="not active"):
+            broker.exchange_obo_token(subject_token, "actor-tok", "users.read")
+
+    def test_subject_is_active_asks_keycloak(self, mock_verify_client, fresh_cache):
+        mock_verify_client.is_token_active.return_value = True
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
+        assert broker.subject_is_active("subject-tok") is True
+        mock_verify_client.is_token_active.assert_called_once_with("subject-tok")

@@ -369,6 +369,15 @@ def create_app(
             request.app.state.token_service.read_actor_token()
         bind_log_context(preferred_username=preferred_username)
 
+        if access_token is not None and not await asyncio.to_thread(
+            request.app.state.token_service.subject_is_active, access_token, request.state.request_id
+        ):
+            raise AppError(
+                status_code=401,
+                error="invalid_token",
+                message="Bearer token is no longer active (it was revoked, or its session has ended).",
+            )
+
         # A step-up prompt belongs to the query that hit it, not to later ones.
         tracker = request.app.state.assurance_tracker
         last = tracker.get_last(access_token) if access_token else None
