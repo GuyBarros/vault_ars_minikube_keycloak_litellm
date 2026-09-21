@@ -17,6 +17,7 @@ import identity
 import agent_runtime
 import tools
 from agent_runtime import SYSTEM_PROMPT, AgentRuntime
+from errors import AppError
 from identity import OboTokenService
 
 
@@ -29,6 +30,7 @@ def test_system_prompt_treats_create_user_as_blocking_ciba_write():
     assert "does NOT create the user" not in SYSTEM_PROMPT
     assert "CIBA" in SYSTEM_PROMPT
     assert "create_user" in SYSTEM_PROMPT
+    assert "Never call `delete_user_by_email`" in SYSTEM_PROMPT
 
 
 class FakeChunk:
@@ -203,6 +205,7 @@ def test_missing_bearer_token_is_rejected():
 def test_expired_bearer_token_is_rejected(monkeypatch):
     client = TestClient(agent_api.app)
     expired_token = _jwt_with_expiry(-30)
+    monkeypatch.setattr(agent_api.app.state.token_service, "read_actor_token", lambda: "actor")
 
     def fail_exchange(*args, **kwargs):
         raise AssertionError("Token exchange should not run for expired access tokens.")
@@ -220,6 +223,50 @@ def test_expired_bearer_token_is_rejected(monkeypatch):
         "error": "invalid_token",
         "message": "Bearer token has expired.",
     }
+
+
+def test_query_reads_actor_token_before_the_llm(monkeypatch):
+    client = TestClient(agent_api.app)
+    access_token = _jwt_with_expiry(300)
+    seen = {"actor": 0}
+
+    def read_actor():
+        seen["actor"] += 1
+        return _jwt_with_expiry(600)
+
+    monkeypatch.setattr(agent_api.app.state.token_service, "read_actor_token", read_actor)
+
+    response = client.post(
+        "/v1/agent/query",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"messages": [{"role": "user", "content": "hello"}]},
+    )
+
+    assert response.status_code == 200
+    assert seen["actor"] == 1
+
+
+def test_expired_actor_token_rejects_the_chat(monkeypatch):
+    client = TestClient(agent_api.app)
+    access_token = _jwt_with_expiry(300)
+
+    def read_actor():
+        raise AppError(
+            status_code=500,
+            error="actor_token_expired",
+            message="Actor token has expired.",
+        )
+
+    monkeypatch.setattr(agent_api.app.state.token_service, "read_actor_token", read_actor)
+
+    response = client.post(
+        "/v1/agent/query",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={"messages": [{"role": "user", "content": "hello"}]},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"] == "actor_token_expired"
 
 
 def test_bypass_mode_allows_request_without_authorization(monkeypatch):

@@ -85,6 +85,32 @@ def extract_agent_identity_claims(actor_token: str | None) -> dict[str, str | No
     }
 
 
+def validate_actor_token(actor_token: str) -> dict[str, Any]:
+    """Check the Vault actor JWT is still inside its validity window.
+
+    Signature stays with Vault (the file is injected by vault-agent). This
+    runs on every chat turn, before the LLM, so an expired actor fails closed
+    instead of only surfacing on the next tools/call.
+    """
+    payload = decode_jwt_payload(actor_token, "Actor token")
+    now = time.time()
+    exp = payload.get("exp")
+    if not isinstance(exp, (int, float)) or float(exp) <= now:
+        raise AppError(
+            status_code=500,
+            error="actor_token_expired",
+            message="Actor token has expired.",
+        )
+    nbf = payload.get("nbf")
+    if isinstance(nbf, (int, float)) and float(nbf) > now:
+        raise AppError(
+            status_code=500,
+            error="actor_token_expired",
+            message="Actor token is not yet valid.",
+        )
+    return payload
+
+
 def validate_access_token(access_token: str) -> dict[str, Any]:
     payload = decode_jwt_payload(access_token, "Bearer token")
     now = time.time()

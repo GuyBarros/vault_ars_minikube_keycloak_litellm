@@ -30,9 +30,7 @@ EXPIRED = "EXPIRED"
 LOA_BASELINE = 1
 LOA_ELEVATED = 2
 
-WRITE_TOOLS = frozenset(
-    {"create_user", "delete_user_by_email", "update_user_by_email"}
-)
+WRITE_TOOLS = frozenset({"create_user", "update_user_by_email"})
 
 # Mirrors infra/config/opa_policies/mcp_pep.rego — logged so the hop viewer
 # can show the PDP rule without scraping OPA.
@@ -40,16 +38,17 @@ REQUIRED_SCOPES = {
     "list_all_users": ("users.read",),
     "search_users_by_first_name": ("users.read",),
     "create_user": ("users.write",),
-    "delete_user_by_email": ("users.write",),
     "update_user_by_email": ("users.write",),
 }
-CIBA_TOOLS = frozenset({"create_user", "delete_user_by_email"})
+CIBA_TOOLS = frozenset({"create_user"})
+# The agent must never reach delete, even with users.write and a CIBA approval.
+DISABLED_TOOLS = frozenset({"delete_user_by_email"})
 PDP_PACKAGE = "mcp.pep"
 PDP_PATH = "/v1/data/mcp/pep/decision"
 PDP_POLICY = (
     "mcp.pep.decision: catalog allow-list (data.rules[source][dest].allow) "
     "+ required_scopes[tool] subset of JWT scope "
-    "+ ciba_tools={create_user,delete_user_by_email}"
+    "+ ciba_tools={create_user}; delete_user_by_email denied in pdp_mcp"
 )
 
 _CIBA_GRANT = "urn:openid:params:grant-type:ciba"
@@ -497,6 +496,25 @@ class McpPep:
             raise PepDenied("Authorization bearer token is required.", error="invalid_request")
         if not tool_name:
             raise PepDenied("MCP tool name is required.", error="invalid_request")
+        if tool_name in DISABLED_TOOLS:
+            _log_pdp_decision(
+                tool_name=tool_name,
+                decision=DENY,
+                current_loa=LOA_BASELINE,
+                required_loa=LOA_BASELINE,
+                request_id=request_id,
+                enforce="deny",
+                reason="tool_disabled",
+                allow=False,
+                ciba_required=False,
+                catalog_source=self._source,
+                catalog_dest=self._dest,
+                pdp_path=getattr(self._opa, "_url", PDP_PATH),
+            )
+            raise PepDenied(
+                f"Tool '{tool_name}' is disabled.",
+                error="tool_disabled",
+            )
 
         claims = self._jwt_validator.validate(token)
         identity = extract_identity(claims)

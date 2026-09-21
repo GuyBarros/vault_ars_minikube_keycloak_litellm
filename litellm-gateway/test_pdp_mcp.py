@@ -96,10 +96,27 @@ def test_authorize_write_ciba_returns_loa2():
     assert headers["X-PEP-Required-LoA"] == "2"
 
 
+def test_authorize_denies_delete_before_opa_and_ciba():
+    opa = _Opa({"allow": True, "ciba_required": True, "reason": "step-up"})
+    pep = McpPep(
+        source="default/litellm-gateway",
+        dest="default/user-mcp",
+        jwt_validator=_Validator({"preferred_username": "writer", "scope": "users.write"}),
+        opa=opa,
+        ciba=_Ciba(),
+    )
+    try:
+        asyncio.run(pep.authorize("delete_user_by_email", "obo-jwt"))
+        raise AssertionError("expected PepDenied")
+    except PepDenied as exc:
+        assert exc.error == "tool_disabled"
+    assert opa.calls == []
+
+
 def test_authorize_denies_unknown_tool():
     pep = _pep(opa_result={"allow": False, "ciba_required": False, "reason": "catalog"})
     try:
-        asyncio.run(pep.authorize("delete_user_by_email", "obo-jwt"))
+        asyncio.run(pep.authorize("excluir_conta", "obo-jwt"))
         raise AssertionError("expected PepDenied")
     except PepDenied as exc:
         assert "not allowed" in exc.message
@@ -148,7 +165,7 @@ def test_guardrail_hook_raises_on_deny():
             hook.async_pre_call_hook(
                 user_api_key_dict=None,
                 cache=None,
-                data={"name": "delete_user_by_email", "incoming_bearer_token": "obo-jwt"},
+                data={"name": "excluir_conta", "incoming_bearer_token": "obo-jwt"},
                 call_type="call_mcp_tool",
             )
         )
