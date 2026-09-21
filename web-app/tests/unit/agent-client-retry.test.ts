@@ -68,4 +68,23 @@ describe('agent client retry behavior', () => {
     await rejection;
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
+
+  it.each([
+    [500, { error: { message: 'This content was blocked due to security policy violation', type: 'internal_server_error' } }, 'This content was blocked due to security policy violation'],
+    [401, { error: 'invalid_token', message: 'Bearer token is no longer active.' }, 'Bearer token is no longer active.'],
+    [502, { detail: 'Keycloak is unavailable' }, 'Keycloak is unavailable'],
+    [500, { error: { code: 500 } }, '{"code":500}'],
+  ])('reads the message out of a %i error body without printing [object Object]', async (status, body, expected) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }),
+      ),
+    );
+
+    await expect(invokeStream({ message: 'hi', history: [], accessToken: 'token' })).rejects.toMatchObject({
+      status,
+      body: expected,
+    });
+  });
 });

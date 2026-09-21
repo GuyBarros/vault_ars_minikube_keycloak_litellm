@@ -48,7 +48,16 @@ export function MessageBubble({ role, text, showTyping, errorStatus }: Props) {
         ) : role === 'agent' && !variant ? (
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
         ) : (
-          text
+          <>
+            {text}
+            {/* 401: the token was refused (revoked, session ended, expired), so the way forward is a new login. */}
+            {errorStatus === 401 && (
+              <>
+                {' '}
+                <a href="/api/auth/login">Sign in again</a>
+              </>
+            )}
+          </>
         )}
       </div>
     </div>
