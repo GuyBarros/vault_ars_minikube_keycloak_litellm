@@ -37,9 +37,9 @@ def log_pdp_decision(
     security test catalog checks for directly (PDP_Decision, LoA_Level,
     Required_LoA) rather than this codebase's usual snake_case convention —
     deliberate, so these lines are usable as literal audit evidence.
-    TransactionID/UserID/Timestamp_UTC are already on every log line via
-    bind_log_context (request_id, preferred_username) and log_event's own
-    timestamp; not duplicated here."""
+    log_event also stamps TransactionID, UserID, Workload_mTLS_CN,
+    PDP_Decision_ID and Timestamp_UTC (CT-06.1). PDP_Decision is left as the
+    PEP wrote it."""
     log_event(
         logger,
         "pdp_decision",

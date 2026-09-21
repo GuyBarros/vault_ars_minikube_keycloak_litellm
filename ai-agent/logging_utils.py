@@ -229,6 +229,23 @@ def _build_caller_fields() -> dict[str, Any]:
     }
 
 
+def _stamp_caderno_audit(payload: dict[str, Any]) -> None:
+    if "PDP_Decision" not in payload:
+        return
+    reason = str(payload.get("reason") or payload.get("error") or "-")
+    package = str(payload.get("pdp_package") or payload.get("event") or "pep")
+    loa = payload.get("LoA_Level")
+    payload["LoA_Level"] = 1 if loa is None else loa
+    payload["TransactionID"] = str(payload.get("request_id") or payload.get("TransactionID") or "-")
+    payload["UserID"] = str(payload.get("preferred_username") or payload.get("UserID") or "-")
+    payload["Workload_mTLS_CN"] = str(
+        payload.get("Workload_mTLS_CN") or payload.get("actor_agent_id") or payload.get("agent_id") or "-"
+    )
+    payload["PDP_Decision_ID"] = str(payload.get("PDP_Decision_ID") or f"{package}:{reason}")
+    if not payload.get("Timestamp_UTC"):
+        payload["Timestamp_UTC"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def log_event(
     logger: logging.Logger,
     event: str,
@@ -248,6 +265,7 @@ def log_event(
         **context_fields,
         **fields,
     }
+    _stamp_caderno_audit(payload)
     _apply_identity_message_prefix(payload)
     logger.log(level, json.dumps(payload, ensure_ascii=True, sort_keys=True))
 

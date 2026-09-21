@@ -15,12 +15,16 @@ import json
 import logging
 import os
 import time
+from contextvars import ContextVar
 from typing import Any, Optional
 
 import httpx
 import jwt
 
+from audit_fields import stamp_caderno_audit
+
 LOGGER = logging.getLogger("litellm-gateway.mcp-pep")
+_AUDIT_CONTEXT: ContextVar[dict[str, Any]] = ContextVar("pep_audit_context", default={})
 
 ALLOW = "ALLOW"
 DENY = "DENY"
@@ -133,7 +137,13 @@ def extract_identity(claims: dict[str, Any]) -> dict[str, Any]:
 
 
 def _emit_audit(payload: dict[str, Any]) -> None:
-    line = json.dumps(payload, ensure_ascii=True, default=str, separators=(",", ":"))
+    merged = dict(payload)
+    ctx = _AUDIT_CONTEXT.get()
+    for key in ("request_id", "caller", "Workload_mTLS_CN", "preferred_username"):
+        if not merged.get(key) and ctx.get(key):
+            merged[key] = ctx[key]
+    stamped = stamp_caderno_audit(merged)
+    line = json.dumps(stamped, ensure_ascii=True, default=str, separators=(",", ":"))
     print(line, flush=True)
     LOGGER.info("%s", line)
 
@@ -457,6 +467,9 @@ class McpPep:
         user = identity.get("preferred_username") or ""
         if not user:
             raise PepDenied("Token is missing preferred_username.", error="invalid_token")
+        ctx = _AUDIT_CONTEXT.get()
+        if ctx:
+            ctx["preferred_username"] = user
 
         # Ask Keycloak, not just the signature: a revoked token, or one whose session has ended,
         # is refused now instead of when it expires.
@@ -571,6 +584,14 @@ class McpPepGuardrail(CustomGuardrail):
             return payload
         bearer = payload.get("incoming_bearer_token") or _bearer_from_metadata(payload)
         request_id = _request_id_from_payload(payload)
+        workload = _workload_from_payload(payload)
+        audit_token = _AUDIT_CONTEXT.set(
+            {
+                "request_id": request_id or "-",
+                "caller": workload.get("caller"),
+                "Workload_mTLS_CN": workload.get("Workload_mTLS_CN") or "-",
+            }
+        )
         try:
             headers = await self._pep_instance().authorize(
                 str(tool_name),
@@ -595,7 +616,10 @@ class McpPepGuardrail(CustomGuardrail):
                 }
             )
             raise Exception(exc.message) from exc
-        return {"extra_headers": headers}
+        else:
+            return {"extra_headers": headers}
+        finally:
+            _AUDIT_CONTEXT.reset(audit_token)
 
 
 def _headers_from_payload(payload: dict) -> dict:
@@ -607,6 +631,20 @@ def _headers_from_payload(payload: dict) -> dict:
 def _bearer_from_metadata(payload: dict) -> str | None:
     headers = _headers_from_payload(payload)
     return headers.get("Authorization") or headers.get("authorization")
+
+
+def _workload_from_payload(payload: dict) -> dict[str, str | None]:
+    headers = _headers_from_payload(payload)
+    spiffe = None
+    for key in ("x-mesh-caller-spiffe", "X-Mesh-Caller-Spiffe"):
+        value = headers.get(key)
+        if value:
+            spiffe = str(value)
+            break
+    from pdp_auth import mesh_caller
+
+    caller = mesh_caller(spiffe) if spiffe else None
+    return {"caller": caller, "Workload_mTLS_CN": spiffe or caller}
 
 
 def _request_id_from_payload(payload: dict) -> str | None:

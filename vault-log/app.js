@@ -598,6 +598,7 @@ function groupEvents(events) {
     system.push(ev);
   }
 
+  for (const s of sessions) s.tokenOutcome = recomputeOutcome(s.events);
   return { sessions, system };
 }
 
@@ -652,7 +653,7 @@ function nodeIcon(meta) {
 const OUTCOME_META = {
   issued: { label: "Token emitido", cls: "ok", desc: "Vault gerou um novo token OBO" },
   cached: { label: "Token reutilizado", cls: "cache", desc: "token de cache, sem chamada ao Vault" },
-  denied: { label: "Acesso negado", cls: "fail", desc: "Vault recusou a troca de token" },
+  denied: { label: "Acesso negado", cls: "fail", desc: "PEP ou troca de token recusou" },
   "n/a": { label: "—", cls: "", desc: "" },
 };
 
@@ -706,26 +707,21 @@ function eventDescription(ev) {
       return `Autenticação OIDC concluída &middot; <code>${escapeHtml(j.request_path || "/api/auth/callback")}</code>`;
     case "web_auth_logout":
       return `Sessão encerrada &middot; <code>${escapeHtml(j.request_path || "/api/auth/logout")}</code>`;
+    case "pdp_decision":
     case "token_chain_subject":
     case "token_chain_actor": {
-      const decision = j.PDP_Decision || "";
-      const token = j.token ? ` <code>${escapeHtml(j.token)}</code>` : "";
-      const enforce = j.enforce ? ` enforce=<code>${escapeHtml(j.enforce)}</code>` : "";
-      const reason = j.reason ? ` reason=<code>${escapeHtml(String(j.reason))}</code>` : "";
-      return `cadeia${token} <code>${escapeHtml(decision)}</code>${enforce}${reason}`;
-    }
-    case "pdp_decision": {
-      const decision = j.PDP_Decision || j.decision || "";
-      const enforce = j.enforce ? ` enforce=<code>${escapeHtml(j.enforce)}</code>` : "";
-      const pep = j.pep ? ` PEP <code>${escapeHtml(j.pep)}</code>` : "";
-      const pdp = j.pdp ? ` PDP <code>${escapeHtml(j.pdp)}</code>` : "";
-      const who = j.caller ? ` caller <code>${escapeHtml(j.caller)}</code>` :
-        j.tool ? ` tool <code>${escapeHtml(j.tool)}</code>` :
-        j.path ? ` path <code>${escapeHtml(j.path)}</code>` : "";
-      const policy = j.pdp_package ? ` package <code>${escapeHtml(j.pdp_package)}</code>` : "";
-      const reason = j.reason ? ` reason=<code>${escapeHtml(String(j.reason))}</code>` : "";
-      const loa = j.LoA_Level ? ` LoA ${escapeHtml(String(j.LoA_Level))}/${escapeHtml(String(j.Required_LoA || j.LoA_Level))}` : "";
-      return `decisão <code>${escapeHtml(decision)}</code>${enforce}${pep}${pdp}${policy}${who}${reason}${loa}`;
+      const bits = [
+        j.token,
+        j.tool,
+        j.TransactionID ? `TransactionID ${j.TransactionID}` : "",
+        j.UserID && j.UserID !== "-" ? `UserID ${j.UserID}` : "",
+        j.LoA_Level != null ? `LoA ${j.LoA_Level}` : "",
+        j.Workload_mTLS_CN && j.Workload_mTLS_CN !== "-" ? `mTLS ${j.Workload_mTLS_CN}` : "",
+        j.PDP_Decision || j.decision || "",
+        j.PDP_Decision_ID ? `PDP_Decision_ID ${j.PDP_Decision_ID}` : "",
+        j.Timestamp_UTC || "",
+      ].filter((v) => typeof v === "string" && v && v !== "-");
+      return escapeHtml(bits.join(" · "));
     }
     case "ciba_started":
       return `HITL para <code>${escapeHtml(j.login_hint || ev.user || "")}</code> · tool <code>${escapeHtml(j.binding_message || j.tool || "")}</code>${j.approve_url ? ` · <code>${escapeHtml(j.approve_url)}</code>` : ""}`;
@@ -760,22 +756,17 @@ function eventExtra(ev, masked) {
   const j = ev.json || {};
   let out = "";
   if (ev.type === "response_sent" && j.response_text) {
-    out += `<details class="disclosure"><summary>Ver resposta retornada ao usuário</summary>`;
-    out += `<div class="response-box">${renderSensitive(j.response_text, masked)}</div></details>`;
+    out += `<div class="response-box">${renderSensitive(j.response_text, masked)}</div>`;
   }
   if (ev.type === "verify_obo_http_error") {
     if (j.subject_token_diag) {
-      out += `<details class="disclosure"><summary>Diagnóstico subject_token</summary><pre class="json">${escapeHtml(JSON.stringify(j.subject_token_diag, null, 2))}</pre></details>`;
+      out += `<pre class="json">${escapeHtml(JSON.stringify(j.subject_token_diag, null, 2))}</pre>`;
     }
     if (j.actor_token_diag) {
-      out += `<details class="disclosure"><summary>Diagnóstico actor_token</summary><pre class="json">${escapeHtml(JSON.stringify(j.actor_token_diag, null, 2))}</pre></details>`;
+      out += `<pre class="json">${escapeHtml(JSON.stringify(j.actor_token_diag, null, 2))}</pre>`;
     }
   }
   const kvs = [];
-  if (j.module) kvs.push(["módulo", j.module]);
-  if (j.method_name) kvs.push(["função", j.method_name]);
-  if (j.hostname) kvs.push(["host", j.hostname]);
-  if (j.level) kvs.push(["nível", j.level]);
   if (j.agent_id) kvs.push(["agent pod", j.agent_id]);
   if (j.duration_ms != null && ev.type === "verify_obo_token_exchange") kvs.push(["duração", j.duration_ms + "ms"]);
   if (j.attempt_number != null) kvs.push(["tentativa", String(j.attempt_number)]);
@@ -783,18 +774,11 @@ function eventExtra(ev, masked) {
   if (j.url) kvs.push(["url destino", j.url]);
   if (j.operation) kvs.push(["operação", j.operation]);
   if (j.service) kvs.push(["serviço", j.service]);
-  if (ev.source) kvs.push(["fonte", ev.source]);
   if (j.caller) kvs.push(["SPIFFE caller", j.caller]);
   if (j.spiffe_id) kvs.push(["SPIFFE", j.spiffe_id]);
   if (j.pep_mode) kvs.push(["PEP mode", j.pep_mode]);
-  if (j.pep) kvs.push(["PEP", j.pep]);
-  if (j.enforce) kvs.push(["enforce", j.enforce]);
-  if (j.pdp) kvs.push(["PDP", j.pdp]);
-  if (j.pdp_package) kvs.push(["PDP package", j.pdp_package]);
-  if (j.pdp_path) kvs.push(["PDP path", j.pdp_path]);
-  if (j.pdp_policy) kvs.push(["política PDP", j.pdp_policy]);
-  if (j.reason) kvs.push(["reason", String(j.reason)]);
-  if (j.PDP_Decision) kvs.push(["decisão", j.PDP_Decision]);
+  if (j.enforce && ev.type !== "pdp_decision") kvs.push(["enforce", j.enforce]);
+  if (j.reason && ev.type !== "pdp_decision") kvs.push(["reason", String(j.reason)]);
   if (j.required_scopes) kvs.push(["scopes exigidos", Array.isArray(j.required_scopes) ? j.required_scopes.join(", ") : String(j.required_scopes)]);
   if (j.granted_scopes) kvs.push(["scopes no JWT", Array.isArray(j.granted_scopes) ? j.granted_scopes.join(", ") : String(j.granted_scopes)]);
   if (j.catalog_source) kvs.push(["catálogo source", j.catalog_source]);
@@ -803,7 +787,7 @@ function eventExtra(ev, masked) {
   if (kvs.length) {
     out += `<div class="kv">` + kvs.map(([k, v]) => `<span><b>${k}:</b> ${escapeHtml(v)}</span>`).join("") + `</div>`;
   }
-  out += `<details class="disclosure"><summary>JSON bruto</summary><pre class="json">${escapeHtml(JSON.stringify(ev.json, null, 2))}</pre></details>`;
+  if (ev.json) out += `<pre class="json">${escapeHtml(JSON.stringify(ev.json, null, 2))}</pre>`;
   return out;
 }
 
@@ -829,11 +813,87 @@ function renderEvent(ev, sessionStart, masked) {
     </div>`;
 }
 
+function eventPath(ev) {
+  return String(ev.path || ev.json?.path || ev.json?.request_path || "");
+}
+
+function isSideChannel(path) {
+  return (
+    path.includes("/chat/completions") ||
+    path.includes("/v1/agent/tokens") ||
+    path.includes("/v1/agent/assurance")
+  );
+}
+
+function pickLast(events, pred) {
+  for (let i = events.length - 1; i >= 0; i--) {
+    if (pred(events[i])) return events[i];
+  }
+  return null;
+}
+
+/* Uma linha por passo do fluxo. Fora: access log, admissão do LLM,
+   polling de tokens e cada repetição do mesmo hop. */
+function flowEvents(events) {
+  const steps = [];
+  const push = (ev) => {
+    if (ev) steps.push(ev);
+  };
+  push(pickLast(events, (e) => e.type === "web_auth_callback" || e.type === "web_agent_error"));
+
+  const subjects = events.filter((e) => e.type === "token_chain_subject" && !isSideChannel(eventPath(e)));
+  push(
+    [...subjects].reverse().find((e) => eventPath(e).includes("/v1/agent/query")) ||
+      subjects[subjects.length - 1]
+  );
+  push(
+    pickLast(events, (e) => {
+      if (e.type !== "pdp_decision" || e.json?.tool) return false;
+      if (e.json?.PDP_Decision === "DENY" || e.json?.enforce === "fallthrough_litellm_auth" || e.json?.error === "opa_unreachable") {
+        return !isSideChannel(eventPath(e));
+      }
+      return e.json?.enforce === "admit_mesh" && eventPath(e).includes("/v1/agent/query");
+    })
+  );
+  push(pickLast(events, (e) => e.type === "token_chain_actor"));
+  push(
+    pickLast(events, (e) =>
+      ["obo_token_exchange_completed", "verify_obo_token_exchange", "obo_token_exchange_authz_denied", "scoped_tool_token_exchange_failed"].includes(e.type)
+    )
+  );
+
+  const pepSeen = new Set();
+  for (const e of events) {
+    if (e.type !== "pdp_decision" || !e.json?.tool) continue;
+    const key = [e.json.tool, e.json.PDP_Decision, e.json.reason || ""].join("|");
+    if (pepSeen.has(key)) continue;
+    pepSeen.add(key);
+    steps.push(e);
+  }
+
+  push(pickLast(events, (e) => e.type === "ciba_approved" || e.type === "ciba_denied") || pickLast(events, (e) => e.type === "ciba_started"));
+  push(pickLast(events, (e) => e.type === "jwt_identity_bound"));
+  push(pickLast(events, (e) => e.type === "vault_db_creds_issued"));
+  push(pickLast(events, (e) => e.type === "db_call"));
+  push(pickLast(events, (e) => e.type === "transform_encode"));
+  push(pickLast(events, (e) => e.type === "tool_invoked") || pickLast(events, (e) => e.type === "scoped_tool_invoke"));
+  push(pickLast(events, (e) => e.type === "llm_error") || pickLast(events, (e) => e.type === "response_sent"));
+  return steps;
+}
+
+function isStepUp(decision) {
+  return decision === "STEP_UP" || decision === "STEP_UP_REQUIRED";
+}
+
 function renderSession(s, masked) {
-  const eventsHtml = s.events.map((ev) => renderEvent(ev, s.start, masked)).join("");
+  const steps = flowEvents(s.events);
+  if (!steps.length) return "";
+  const eventsHtml = steps.map((ev) => renderEvent(ev, s.start, masked)).join("");
   const oc = OUTCOME_META[s.tokenOutcome];
+  const verdict = sessionVerdict(s);
+  const verdictCls = verdict?.decision === "DENY" ? "fail" : verdict?.decision === "ALLOW" ? "ok" : isStepUp(verdict?.decision) ? "cache" : "";
+  const verdictBadge = verdict ? `<span class="badge ${verdictCls}">${escapeHtml(verdictLabel(verdict))}</span>` : "";
   const scopeBadge = s.scopes ? `<span class="badge">scope: ${escapeHtml(s.scopes.join(", "))}</span>` : "";
-  const toolBadge = s.tool ? `<span class="badge">${escapeHtml(s.tool)}</span>` : "";
   const outcomeBadge = oc.cls ? `<span class="badge ${oc.cls}" title="${oc.desc}">${oc.label}</span>` : "";
   return `
     <article class="session outcome-${s.tokenOutcome}" data-user="${escapeHtml(s.user)}" data-request-id="${escapeHtml(s.requestId)}">
@@ -845,7 +905,7 @@ function renderSession(s, masked) {
         </div>
         <div class="session-spacer"></div>
         <div class="session-badges">
-          ${outcomeBadge}${toolBadge}${scopeBadge}
+          ${verdictBadge}${outcomeBadge}${scopeBadge}
           <span class="badge time">${fmtDur(s.durationMs)}</span>
           <svg class="chevron" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
         </div>
@@ -917,14 +977,14 @@ const RESULT_CHIP = {
 
 function buildVaultEvents() {
   const rows = [];
-  const pushFrom = (ev, fallbackUser) => {
+  const pushFrom = (ev, fallbackUser, requestId) => {
     const meta = AUDIT_META[ev.type];
     if (!meta) return;
     const j = ev.json || {};
     rows.push({
       ts: ev.ts,
       user: ev.user || fallbackUser || "ai-agent (serviço)",
-      requestId: ev.requestId,
+      requestId: requestId || ev.requestId,
       type: ev.type,
       meta,
       scope: (j.required_scopes && j.required_scopes.join(", ")) || j.scope || null,
@@ -937,19 +997,20 @@ function buildVaultEvents() {
       pdp: j.pdp || null,
       pdpPolicy: j.pdp_policy || null,
       reason: j.reason || null,
+      decision: j.PDP_Decision || null,
     });
   };
-  for (const s of STATE.sessions) {
-    for (const ev of s.events) pushFrom(ev, s.user);
+  for (const s of coalescedSessions()) {
+    for (const ev of s.events) pushFrom(ev, s.user, s.requestId);
   }
-  for (const ev of STATE.system) pushFrom(ev, null);
+  for (const ev of STATE.system) pushFrom(ev, null, ev.requestId);
   rows.sort((a, b) => a.ts - b.ts);
   return rows;
 }
 
 function renderUserSummary() {
   const map = new Map();
-  for (const s of STATE.sessions) {
+  for (const s of coalescedSessions()) {
     if (!map.has(s.user)) map.set(s.user, { issued: 0, cached: 0, denied: 0, total: 0 });
     const m = map.get(s.user);
     m.total++;
@@ -984,40 +1045,56 @@ function renderVaultAudit() {
     if (STATE.userFilter !== "all" && r.user !== STATE.userFilter) return false;
     const q = STATE.search.trim().toLowerCase();
     if (!q) return true;
-    return [r.user, r.requestId, r.scope, r.tool, r.meta.label].join(" ").toLowerCase().includes(q);
+    return [r.user, r.requestId, r.scope, r.tool, r.reason, r.decision, r.enforce, r.meta.label].join(" ").toLowerCase().includes(q);
   });
 
-  const feed = rows
-    .map((r) => {
+  const groups = [];
+  const byRequest = new Map();
+  for (const r of rows) {
+    const key = r.requestId || `solo-${r.ts?.getTime() || groups.length}`;
+    if (!byRequest.has(key)) {
+      byRequest.set(key, []);
+      groups.push(key);
+    }
+    byRequest.get(key).push(r);
+  }
+
+  const feed = groups.map((key) => {
+    const items = byRequest.get(key);
+    const head = items[0];
+    const lines = items.map((r) => {
+      const denied = r.decision === "DENY" || r.meta.result === "fail";
+      const step = isStepUp(r.decision);
+      const result = denied ? "fail" : step ? "request" : r.meta.result;
+      const chip = denied ? "negado" : step ? "step-up" : r.decision === "ALLOW" ? "allow" : RESULT_CHIP[r.meta.result];
+      const action = [r.tool, r.decision, r.enforce, r.reason].filter(Boolean).join(" · ") || r.meta.label;
       const details = [];
       if (r.scope) details.push(`<span><b>escopo:</b> <code>${escapeHtml(r.scope)}</code></span>`);
-      if (r.tool) details.push(`<span><b>ferramenta:</b> <code>${escapeHtml(r.tool)}</code></span>`);
-      if (r.expiry) details.push(`<span><b>expira:</b> ${escapeHtml(r.expiry.toLocaleString("pt-BR"))}</span>`);
-      if (r.brokerUrl) details.push(`<span><b>broker:</b> <code>${escapeHtml(r.brokerUrl)}</code></span>`);
-      if (r.pep) details.push(`<span><b>PEP:</b> <code>${escapeHtml(r.pep)}</code></span>`);
-      if (r.enforce) details.push(`<span><b>enforce:</b> <code>${escapeHtml(r.enforce)}</code></span>`);
-      if (r.pdp) details.push(`<span><b>PDP:</b> <code>${escapeHtml(r.pdp)}</code></span>`);
-      if (r.pdpPolicy) details.push(`<span><b>política:</b> <code>${escapeHtml(r.pdpPolicy)}</code></span>`);
-      if (r.reason) details.push(`<span><b>reason:</b> <code>${escapeHtml(String(r.reason))}</code></span>`);
       if (r.error) details.push(`<span class="err"><b>erro:</b> ${escapeHtml(r.error)}</span>`);
-      if (r.requestId) details.push(`<span><b>request:</b> <code>${escapeHtml(r.requestId)}</code></span>`);
       return `
-        <div class="audit-row result-${r.meta.result}" style="--node:${r.meta.color}">
-          <div class="audit-time">${fmtDateTime(r.ts)}</div>
+        <div class="audit-row result-${result}" style="--node:${r.meta.color}">
+          <div class="audit-time">${fmtTime(r.ts)}</div>
           <div class="audit-dot"></div>
           <div class="audit-body">
             <div class="audit-head">
-              <span class="audit-user">${escapeHtml(r.user)}</span>
-              <span class="audit-action">${r.meta.label}</span>
-              <span class="result-chip ${r.meta.result}">${RESULT_CHIP[r.meta.result]}</span>
+              <span class="audit-action">${escapeHtml(action)}</span>
+              <span class="result-chip ${result}">${escapeHtml(chip)}</span>
             </div>
-            <div class="kv">${details.join("")}</div>
+            ${details.length ? `<div class="kv">${details.join("")}</div>` : ""}
           </div>
         </div>`;
-    })
-    .join("");
+    }).join("");
+    return `
+      <section class="hop-request">
+        <div class="hop-top">
+          <span class="hop-role">${escapeHtml(head.user)}</span>
+          <span class="hop-count">${escapeHtml(head.requestId || "sem request_id")}</span>
+        </div>
+        <div class="audit-feed">${lines}</div>
+      </section>`;
+  }).join("");
 
-  return renderUserSummary() + `<div class="audit-feed">${feed}</div>`;
+  return renderUserSummary() + feed;
 }
 
 /* --------------------------- Hop / fluxo view ----------------------------- */
@@ -1086,7 +1163,7 @@ const HOP_DEFS = [
     title: "Admissão LiteLLM (SPIFFE ai-agent)",
     role: "LiteLLM pdp_auth.py",
     responsibility: "tools/call chega de default/ai-agent. Authorization continua o JWT OBO.",
-    match: (e) => e.type === "pdp_decision" && String(e.json?.caller || "").includes("ai-agent"),
+    match: (e) => e.type === "pdp_decision" && !e.json?.tool && String(e.json?.caller || "").includes("ai-agent"),
   },
   {
     id: "mcp-pep",
@@ -1102,7 +1179,7 @@ const HOP_DEFS = [
     responsibility: "OPA marca ciba_required. O PEP faz poll. Approve em localhost:8082. JWT LoA 2 substitui o OBO.",
     optional: true,
     optionalNote: "Não dispara em list/search/update. Só create_user. delete_user_by_email é recusada no PEP.",
-    match: (e) => ["ciba_started", "ciba_approved", "ciba_denied"].includes(e.type) || e.json?.PDP_Decision === "STEP_UP_REQUIRED",
+    match: (e) => ["ciba_started", "ciba_approved", "ciba_denied"].includes(e.type) || isStepUp(e.json?.PDP_Decision),
   },
   {
     id: "runtime-jwt",
@@ -1148,100 +1225,82 @@ function allEvents() {
   return out;
 }
 
-function hopPolicyBlock(ev) {
-  if (!ev) return "";
-  const j = ev.json || {};
-  const rows = [
-    ["PEP", j.pep],
-    ["enforce", j.enforce],
-    ["PDP", j.pdp],
-    ["package", j.pdp_package],
-    ["path PDP", j.pdp_path],
-    ["política", j.pdp_policy],
-    ["decisão", j.PDP_Decision || j.decision],
-    ["reason", j.reason],
-    ["tool", j.tool],
-    ["caller", j.caller],
-    ["scopes exigidos", Array.isArray(j.required_scopes) ? j.required_scopes.join(", ") : j.required_scopes],
-    ["scopes no JWT", Array.isArray(j.granted_scopes) ? j.granted_scopes.join(", ") : j.granted_scopes],
-    ["catálogo", j.catalog_source && j.catalog_dest ? `${j.catalog_source} → ${j.catalog_dest}` : null],
-    ["ciba_required", j.ciba_required == null || j.ciba_required === "" ? null : String(j.ciba_required)],
-    ["LoA", j.LoA_Level != null ? `${j.LoA_Level}/${j.Required_LoA || j.LoA_Level}` : null],
-  ].filter(([, v]) => v != null && v !== "" && v !== "-");
-  if (!rows.length) return "";
-  return `<dl class="hop-policy">${rows.map(([k, v]) => `<div><dt>${escapeHtml(k)}</dt><dd><code>${escapeHtml(String(v))}</code></dd></div>`).join("")}</dl>`;
+function sessionVerdict(s) {
+  const evs = s.events || [];
+  const ranked = [...evs].reverse();
+  const pick =
+    ranked.find((e) => e.type === "pdp_decision" && e.json?.tool) ||
+    ranked.find((e) => e.type === "pdp_decision" && e.json?.PDP_Decision === "DENY") ||
+    ranked.find((e) => e.type === "token_chain_subject" || e.type === "token_chain_actor") ||
+    ranked.find((e) => e.type === "pdp_decision");
+  if (!pick) return null;
+  const j = pick.json || {};
+  return {
+    decision: j.PDP_Decision || "",
+    enforce: j.enforce || "",
+    reason: String(j.reason || j.error || ""),
+    tool: j.tool || s.tool || "",
+    loa: j.LoA_Level != null ? `${j.LoA_Level}/${j.Required_LoA || j.LoA_Level}` : "",
+  };
+}
+
+function verdictLabel(v) {
+  if (!v) return "sem decisão PEP";
+  return [v.tool, v.decision, v.enforce, v.reason, v.loa && `LoA ${v.loa}`].filter(Boolean).join(" · ");
 }
 
 function renderHops() {
-  const events = allEvents();
-  const hops = HOP_DEFS.map((hop) => {
-    const hits = events.filter(hop.match).sort((a, b) => (a.ts || 0) - (b.ts || 0));
-    return { ...hop, hits };
-  });
-  const seen = hops.filter((h) => h.hits.length).length;
-  const tools = [...new Set(events.map((e) => e.json?.tool).filter(Boolean))];
-  const callers = [...new Set(events.filter((e) => e.type === "pdp_decision" && e.json?.caller).map((e) => e.json.caller))];
-  const snap = STATE.snapshot;
-
-  let identHtml = "";
-  if (snap && Array.isArray(snap.identities) && snap.identities.length) {
-    identHtml = `
-      <div class="audit-summary hop-ident">
-        <h3>Identidades mintadas (Consul Connect SVID)</h3>
-        <p class="hop-note">Trust domain <code>${escapeHtml(snap.trust_domain)}</code> · ${escapeHtml(snap.collected_at || "")}</p>
-        <table class="u-table">
-          <thead><tr><th>Serviço</th><th>SPIFFE</th><th>Quem minta</th></tr></thead>
-          <tbody>
-            ${snap.identities.map((id) => `
-              <tr>
-                <td><code>${escapeHtml(id.namespace)}/${escapeHtml(id.service)}</code></td>
-                <td><code>${escapeHtml(id.spiffe_id)}</code></td>
-                <td>${escapeHtml(id.mint || "Consul Connect")}</td>
-              </tr>`).join("")}
-          </tbody>
-        </table>
-      </div>`;
-  }
-
-  const hopCards = hops.map((h) => {
-    const seenCls = h.hits.length ? "seen" : h.optional ? "skip" : "miss";
-    const evidence = h.hits.slice(-3).map((ev) => {
-      const t = ev.ts ? fmtTime(ev.ts) : "";
-      return `<li><span class="hop-ev-time">${t}</span> ${eventDescription(ev)}</li>`;
+  const sessions = visibleSessions();
+  const cards = sessions.map((s) => {
+    const flow = flowEvents(s.events);
+    const fired = HOP_DEFS.map((hop) => {
+      const hits = flow.filter(hop.match);
+      if (!hits.length) return "";
+      const last = hits[hits.length - 1];
+      return `<li title="${escapeHtml(hop.responsibility)}"><span class="hop-role">${escapeHtml(hop.title)}</span> ${eventDescription(last)}</li>`;
     }).join("");
-    const status = h.hits.length
-      ? h.hits.length + " evidência(s)"
-      : h.optional
-        ? (h.optionalNote || "não se aplica neste fluxo")
-        : "ainda não visto";
-    const lastPep = [...h.hits].reverse().find((ev) => ev.json && (ev.json.pep || ev.json.pdp_policy || ev.json.enforce));
+    if (!fired) return "";
+    const v = sessionVerdict(s);
+    const cls = v?.decision === "DENY" ? "fail" : isStepUp(v?.decision) ? "cache" : v?.decision === "ALLOW" ? "ok" : "";
     return `
-      <article class="hop ${seenCls}">
+      <article class="hop-request">
         <div class="hop-top">
-          <span class="hop-role">${escapeHtml(h.role)}</span>
-          <span class="hop-count">${escapeHtml(status)}</span>
+          <span class="hop-role">${escapeHtml(s.user)}</span>
+          <span class="hop-count">${escapeHtml(s.requestId)}</span>
         </div>
-        <h3>${escapeHtml(h.title)}</h3>
-        <p>${escapeHtml(h.responsibility)}</p>
-        ${hopPolicyBlock(lastPep || h.hits[h.hits.length - 1])}
-        ${evidence ? `<ul class="hop-evidence">${evidence}</ul>` : ""}
+        ${s.query ? `<p class="hop-query">"${escapeHtml(s.query)}"</p>` : ""}
+        <p class="hop-verdict"><span class="badge ${cls}">${escapeHtml(verdictLabel(v))}</span></p>
+        <ol class="hop-chain">${fired || "<li>Nenhum hop deste request.</li>"}</ol>
       </article>`;
   }).join("");
 
-  return `
-    <div class="hop-legend">
-      <div class="stat-card" style="--bar:var(--c-obo)"><div class="stat-value">${seen}/${hops.length}</div><div class="stat-label">Hops com evidência</div><div class="stat-sub">stream ao vivo</div></div>
-      <div class="stat-card" style="--bar:var(--c-tool)"><div class="stat-value">${tools.length || "—"}</div><div class="stat-label">Tools vistas</div><div class="stat-sub">${escapeHtml(tools.join(", ") || "use o chat em :8080")}</div></div>
-      <div class="stat-card" style="--bar:var(--c-request)"><div class="stat-value">${callers.length || "—"}</div><div class="stat-label">Callers SPIFFE</div><div class="stat-sub">${escapeHtml(callers.join(", ") || "aguardando pdp_auth")}</div></div>
-    </div>
-    ${identHtml}
-    <div class="hop-grid">${hopCards}</div>`;
+  const snap = STATE.snapshot;
+  let mesh = "";
+  if (snap && Array.isArray(snap.identities) && snap.identities.length) {
+    const intentions = Array.isArray(snap.intentions) ? snap.intentions : [];
+    mesh = `
+      <section class="hop-mesh">
+        <p class="hop-note">SPIFFE e intentions (${snap.identities.length}). Trust domain <code>${escapeHtml(snap.trust_domain || "")}</code>. Isto é o snapshot da malha, não uma requisição.</p>
+        <table class="u-table">
+          <thead><tr><th>Serviço</th><th>SPIFFE</th></tr></thead>
+          <tbody>
+            ${snap.identities.map((id) => `<tr><td><code>${escapeHtml(id.namespace)}/${escapeHtml(id.service)}</code></td><td><code>${escapeHtml(id.spiffe_id)}</code></td></tr>`).join("")}
+          </tbody>
+        </table>
+        ${intentions.length ? `<table class="u-table"><thead><tr><th>Intention</th><th>Ação</th></tr></thead><tbody>${intentions.map((it) => `<tr><td><code>${escapeHtml(it.source)} → ${escapeHtml(it.dest)}</code></td><td>${escapeHtml(it.action || "")}</td></tr>`).join("")}</tbody></table>` : ""}
+      </section>`;
+  }
+
+  const lead = `<p class="hop-note">Uma cadeia por requisição, só com os hops que dispararam. O selo é a decisão dessa chamada.</p>`;
+  if (!cards) return lead + mesh;
+  return lead + cards + mesh;
 }
 
 /* ----------------------------- Stats -------------------------------------- */
 
 function renderStats() {
-  const { sessions, system } = STATE;
+  const { system } = STATE;
+  const sessions = coalescedSessions();
   const users = new Set(sessions.map((s) => s.user));
   const BROKER_TYPES = new Set(["identity_broker_call", "verify_obo_token_exchange", "verify_obo_http_error"]);
   const brokerCalls = sessions.reduce((n, s) => n + s.events.filter((e) => BROKER_TYPES.has(e.type)).length, 0);
@@ -1286,7 +1345,7 @@ function getAllSources() {
 }
 
 function renderUserFilters() {
-  const users = [...new Set(STATE.sessions.map((s) => s.user))];
+  const users = [...new Set(coalescedSessions().map((s) => s.user))];
   const chips = [`<button class="chip ${STATE.userFilter === "all" ? "active" : ""}" data-user="all">Todos</button>`];
   for (const u of users) {
     chips.push(
@@ -1323,9 +1382,78 @@ function matchesSearch(s, q) {
     s.requestId,
     s.tool,
     (s.scopes || []).join(" "),
-    s.events.map((e) => e.json && (e.json.message || e.json.response_text || "")).join(" "),
+    s.events.map((e) => {
+      const j = e.json || {};
+      return [j.message, j.response_text, j.tool, j.reason, j.PDP_Decision, j.enforce, j.error].filter(Boolean).join(" ");
+    }).join(" "),
   ].join(" ").toLowerCase();
   return hay.includes(q.toLowerCase());
+}
+
+const NOISE_SESSION_TYPES = new Set(["discovery_unauth_request", "collect_skip"]);
+
+function isUserTurn(s) {
+  return s.events.some(
+    (e) => e.type === "web_conversation_started" || (e.type === "agent_request_started" && e.json?.user_message)
+  );
+}
+
+function turnClosesAt(s) {
+  if (s.events.some((e) => e.type === "response_sent" || e.type === "web_agent_error")) {
+    return s.end.getTime() + 2000;
+  }
+  return s.start.getTime() + 120000;
+}
+
+/* One chat message is several request_ids (web, LiteLLM, LLM, tokens).
+   Keep the turn that has the user text and fold the hops that fall inside it. */
+function hostTurn(turns, ts) {
+  return turns
+    .filter((t) => ts >= t.start.getTime() - 1000 && ts <= turnClosesAt(t))
+    .sort((a, b) => b.start - a.start)[0];
+}
+
+function coalescedSessions() {
+  const turns = STATE.sessions.filter(isUserTurn).map((s) => ({ ...s, events: s.events.slice() }));
+  const kept = [];
+  for (const s of STATE.sessions) {
+    if (isUserTurn(s)) continue;
+    if (s.events.length && s.events.every((e) => NOISE_SESSION_TYPES.has(e.type))) continue;
+    const stray = [];
+    for (const ev of s.events) {
+      const ts = ev.ts ? ev.ts.getTime() : s.start.getTime();
+      const host = hostTurn(turns, ts);
+      if (!host) {
+        stray.push(ev);
+        continue;
+      }
+      host.events.push(ev);
+      if (!host.tool && s.tool) host.tool = s.tool;
+      if ((!host.user || host.user === "desconhecido") && s.user && s.user !== "desconhecido") host.user = s.user;
+    }
+    const worthKeeping = stray.some(
+      (e) => e.type === "web_auth_callback" || (e.type === "pdp_decision" && e.json?.tool)
+    );
+    if (worthKeeping) kept.push({ ...s, events: stray });
+  }
+  for (const t of turns) {
+    t.events.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+    const last = t.events[t.events.length - 1];
+    if (last?.ts && last.ts > t.end) t.end = last.ts;
+    t.durationMs = t.end - t.start;
+    t.tokenOutcome = recomputeOutcome(t.events);
+  }
+  return turns.concat(kept).sort((a, b) => a.start - b.start);
+}
+
+function visibleSessions() {
+  const q = STATE.search.trim();
+  return coalescedSessions().filter(
+    (s) =>
+      (STATE.userFilter === "all" || s.user === STATE.userFilter) &&
+      (STATE.sourceFilter === "all" || s.events.some((e) => e.source === STATE.sourceFilter)) &&
+      matchesSearch(s, q)
+  );
 }
 
 function render() {
@@ -1369,19 +1497,9 @@ function render() {
   tl.classList.remove("vault-view");
   if (maskWrap) maskWrap.style.display = "";
 
-  const q = STATE.search.trim();
-  const visible = STATE.sessions.filter(
-    (s) =>
-      (STATE.userFilter === "all" || s.user === STATE.userFilter) &&
-      (STATE.sourceFilter === "all" || s.events.some((e) => e.source === STATE.sourceFilter)) &&
-      matchesSearch(s, q)
-  );
+  const visible = visibleSessions();
 
-  let html = visible.map((s) => renderSession(s, STATE.mask)).join("");
-  const sysVisible = STATE.sourceFilter === "all"
-    ? STATE.system
-    : STATE.system.filter((e) => e.source === STATE.sourceFilter);
-  if (STATE.userFilter === "all" && !q) html += renderSystemSession(sysVisible, STATE.mask);
+  const html = visible.map((s) => renderSession(s, STATE.mask)).join("");
 
   tl.innerHTML = html;
   restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds);
@@ -1407,8 +1525,8 @@ function restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds) {
 
 function recomputeOutcome(evs) {
   const has = (t) => evs.some((e) => e.type === t);
+  if (evs.some((e) => (e.type === "pdp_decision" || e.type === "token_chain_subject" || e.type === "token_chain_actor") && e.json?.PDP_Decision === "DENY")) return "denied";
   if (has("scoped_tool_token_exchange_failed") || has("obo_token_exchange_internal_error") || has("obo_token_exchange_authz_denied") || has("ciba_denied")) return "denied";
-  if (evs.some((e) => e.type === "pdp_decision" && e.json?.PDP_Decision === "DENY")) return "denied";
   if (has("obo_token_exchange_completed") || has("verify_obo_token_exchange") || has("vault_db_creds_issued")) return "issued";
   if (has("scoped_tool_invoke") && !has("identity_broker_call")) return "cached";
   return "n/a";
@@ -1530,7 +1648,7 @@ function wire() {
 
   document.getElementById("timeline").addEventListener("click", (e) => {
     const head = e.target.closest(".session-head");
-    if (head && !e.target.closest("details")) head.parentElement.classList.toggle("collapsed");
+    if (head) head.parentElement.classList.toggle("collapsed");
   });
 
   const modal = document.getElementById("loadModal");
