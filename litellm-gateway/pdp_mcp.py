@@ -34,7 +34,6 @@ REQUIRED_SCOPES = {
     "list_all_users": ("users.read",),
     "search_users_by_first_name": ("users.read",),
     "create_user": ("users.write",),
-    "delete_user_by_email": ("users.write",),
     "update_user_by_email": ("users.write",),
 }
 LOA2_TOOLS = frozenset({"create_user", "delete_user_by_email"})
@@ -376,6 +375,25 @@ class McpPep:
             raise PepDenied("Authorization bearer token is required.", error="invalid_request")
         if not tool_name:
             raise PepDenied("MCP tool name is required.", error="invalid_request")
+        if tool_name in DISABLED_TOOLS:
+            _log_pdp_decision(
+                tool_name=tool_name,
+                decision=DENY,
+                current_loa=LOA_BASELINE,
+                required_loa=LOA_BASELINE,
+                request_id=request_id,
+                enforce="deny",
+                reason="tool_disabled",
+                allow=False,
+                ciba_required=False,
+                catalog_source=self._source,
+                catalog_dest=self._dest,
+                pdp_path=getattr(self._opa, "_url", PDP_PATH),
+            )
+            raise PepDenied(
+                f"Tool '{tool_name}' is disabled.",
+                error="tool_disabled",
+            )
 
         claims = self._jwt_validator.validate(token)
         identity = extract_identity(claims)

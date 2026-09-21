@@ -23,7 +23,6 @@ required_scopes := {
 	"list_all_users": {"users.read"},
 	"search_users_by_first_name": {"users.read"},
 	"create_user": {"users.write"},
-	"delete_user_by_email": {"users.write"},
 	"update_user_by_email": {"users.write"},
 }
 
@@ -31,6 +30,9 @@ required_scopes := {
 # step-up login (password + OTP). `loa` is the token's acr as the PEP read it.
 loa2_tools := {
 	"create_user",
+}
+
+disabled_tools := {
 	"delete_user_by_email",
 }
 
@@ -51,6 +53,14 @@ scope_ok if {
 }
 # CT-01.2: Autenticação Multifator / MFA (LoA=2) - PDP
 decision := {
+	"allow": false,
+	"ciba_required": false,
+	"reason": "tool_disabled",
+} if {
+	input.tool in disabled_tools
+}
+
+decision := {
 	"allow": true,
 	"required_loa": 2,
 	"reason": "loa2",
@@ -67,6 +77,7 @@ decision := {
 	"required_loa": 2,
 	"reason": "step_up_required",
 } if {
+	not input.tool in disabled_tools
 	tool_in_catalog
 	scope_ok
 	input.tool in loa2_tools
@@ -78,6 +89,7 @@ decision := {
 	"required_loa": 1,
 	"reason": "allow",
 } if {
+	not input.tool in disabled_tools
 	tool_in_catalog
 	scope_ok
 	not input.tool in loa2_tools
@@ -87,6 +99,7 @@ decision := {
 	"allow": false,
 	"reason": "insufficient_scope",
 } if {
+	not input.tool in disabled_tools
 	tool_in_catalog
 	not scope_ok
 }
@@ -95,6 +108,7 @@ decision := {
 	"allow": false,
 	"reason": "catalog",
 } if {
+	not input.tool in disabled_tools
 	input.tool
 	not tool_in_catalog
 }

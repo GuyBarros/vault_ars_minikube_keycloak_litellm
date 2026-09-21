@@ -3,7 +3,9 @@ from types import SimpleNamespace
 from pdp_auth import (
     _ensure_bearer_prefix,
     decide,
+    is_chat_path,
     mesh_caller,
+    strip_bearer,
     user_api_key_auth,
 )
 
@@ -48,6 +50,20 @@ def test_decide_admits_only_listed_mesh_services_on_protected_paths():
     # Same service name in another Consul namespace is a different identity.
     assert decide(path="/v1/chat/completions", caller="other/ai-agent") == "DENY"
     assert decide(path="/v1/agent/query", caller=None) == "DENY"
+
+
+def test_chat_path_is_only_the_agent_passthrough():
+    assert is_chat_path("/v1/agent/query")
+    assert is_chat_path("/v1/agent/tokens")
+    assert not is_chat_path("/v1/chat/completions")
+    assert not is_chat_path("/user_mcp/mcp")
+
+
+def test_strip_bearer():
+    assert strip_bearer("Bearer abc") == "abc"
+    assert strip_bearer("bearer abc") == "abc"
+    assert strip_bearer("abc") == "abc"
+    assert strip_bearer(None) == ""
 
 
 def test_ensure_bearer_prefix():
@@ -120,6 +136,110 @@ def test_user_api_key_auth_admits_mesh_caller_as_admin(monkeypatch):
         )
     )
     assert result.user_role == "proxy_admin"
+    assert result.api_key == "mesh:default/ai-agent"
+
+
+def test_chat_from_web_verifies_subject_jwt(monkeypatch):
+    import asyncio
+    import sys
+    from types import ModuleType
+
+    class FakeAuth:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    fake_types = ModuleType("litellm.proxy._types")
+    fake_types.UserAPIKeyAuth = FakeAuth
+    fake_types.LitellmUserRoles = SimpleNamespace(PROXY_ADMIN="proxy_admin")
+    for name in ("litellm", "litellm.proxy"):
+        monkeypatch.setitem(sys.modules, name, sys.modules.get(name) or ModuleType(name))
+    monkeypatch.setitem(sys.modules, "litellm.proxy._types", fake_types)
+
+    seen = {}
+
+    class FakeValidator:
+        def validate(self, token):
+            seen["token"] = token
+            return {"preferred_username": "user", "aud": "token-exchange", "iss": "http://kc/realms/demo"}
+
+    monkeypatch.setattr("pdp_auth.subject_validator", lambda: FakeValidator())
+    web = "spiffe://td.consul/ns/default/dc/dc1/svc/web"
+    result = asyncio.run(
+        user_api_key_auth(
+            _request("/v1/agent/query", {"x-mesh-caller-spiffe": web}),
+            "Bearer subject-jwt",
+        )
+    )
+    assert seen["token"] == "subject-jwt"
+    assert result.api_key == "mesh:default/web"
+
+
+def test_chat_from_web_rejects_invalid_subject_jwt(monkeypatch):
+    import asyncio
+    import sys
+    from types import ModuleType
+
+    from pdp_auth import SubjectJwtError
+
+    class FakeValidator:
+        def validate(self, token):
+            raise SubjectJwtError("Token is invalid: bad sig", "invalid_token")
+
+    monkeypatch.setattr("pdp_auth.subject_validator", lambda: FakeValidator())
+    web = "spiffe://td.consul/ns/default/dc/dc1/svc/web"
+
+    class ProxyException(Exception):
+        def __init__(self, message, type, param, code):
+            super().__init__(message)
+            self.type = type
+            self.code = code
+
+    fake_types = ModuleType("litellm.proxy._types")
+    fake_types.ProxyException = ProxyException
+    for name in ("litellm", "litellm.proxy"):
+        monkeypatch.setitem(sys.modules, name, sys.modules.get(name) or ModuleType(name))
+    monkeypatch.setitem(sys.modules, "litellm.proxy._types", fake_types)
+
+    try:
+        asyncio.run(
+            user_api_key_auth(
+                _request("/v1/agent/query", {"x-mesh-caller-spiffe": web}),
+                "Bearer forged",
+            )
+        )
+    except ProxyException as exc:
+        assert exc.code == 401
+        assert exc.type == "invalid_token"
+    else:
+        raise AssertionError("invalid subject JWT must be rejected")
+
+
+def test_llm_hop_does_not_verify_subject_jwt(monkeypatch):
+    import asyncio
+    import sys
+    from types import ModuleType
+
+    class FakeAuth:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    fake_types = ModuleType("litellm.proxy._types")
+    fake_types.UserAPIKeyAuth = FakeAuth
+    fake_types.LitellmUserRoles = SimpleNamespace(PROXY_ADMIN="proxy_admin")
+    for name in ("litellm", "litellm.proxy"):
+        monkeypatch.setitem(sys.modules, name, sys.modules.get(name) or ModuleType(name))
+    monkeypatch.setitem(sys.modules, "litellm.proxy._types", fake_types)
+
+    def fail_validator():
+        raise AssertionError("chat/completions must not verify the subject JWT")
+
+    monkeypatch.setattr("pdp_auth.subject_validator", fail_validator)
+    result = asyncio.run(
+        user_api_key_auth(
+            _request("/v1/chat/completions", {"x-mesh-caller-spiffe": AI_AGENT}),
+            "sk-litellm-local",
+        )
+    )
     assert result.api_key == "mesh:default/ai-agent"
 
 
