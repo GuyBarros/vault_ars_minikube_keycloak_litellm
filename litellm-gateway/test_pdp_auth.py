@@ -76,6 +76,23 @@ def _request(path, headers):
     return SimpleNamespace(url=SimpleNamespace(path=path), headers=headers)
 
 
+def test_audit_logs_the_full_spiffe_id_of_the_caller(monkeypatch, capsys):
+    import asyncio
+
+    async def fake_default(request, api_key):
+        return None
+
+    monkeypatch.setattr("pdp_auth._default_user_api_key_auth", fake_default)
+    monkeypatch.setattr("pdp_auth._allowed_auth", lambda caller, public: None)
+    asyncio.run(user_api_key_auth(_request("/v1/chat/completions", {"x-mesh-caller-spiffe": AI_AGENT}), "k"))
+    import json
+
+    audit = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert audit["caller"] == AI_AGENT  # not reduced to default/ai-agent
+    assert audit["caller_service"] == "default/ai-agent"
+    assert audit["PDP_Decision"] == "ALLOW"
+
+
 def test_user_api_key_auth_admits_mesh_caller_as_admin(monkeypatch):
     import asyncio
     import sys

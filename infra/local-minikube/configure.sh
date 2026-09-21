@@ -212,8 +212,9 @@ vault write identity/oidc/config issuer="https://${VAULT_PUBLIC_ADDR}"
 # infra/local-minikube/keycloak.sh) instead of re-registering per pod.
 template=$(jq -n -r --arg org "$ID_ORG" --arg bu "$ID_BU" --arg dept "$ID_DEPT" --arg svc "$ID_SVC_GROUP" \
   '"{\"org\": \"" + $org + "\", \"bu\": \"" + $bu + "\", \"department\": \"" + $dept + "\", \"service_group\": \"" + $svc + "\", \"entity_id\": {{identity.entity.id}}, \"agent_id\": \"ai-agent\"}"')
+# client_id is pinned so token-exchange can require it as the actor token's audience.
 jq -n --arg key "default" --argjson ttl 3600 --arg template "$template" \
-  '{key: $key, ttl: $ttl, template: $template}' | vault write identity/oidc/role/agent-role -
+  '{key: $key, ttl: $ttl, template: $template, client_id: "agent-actor"}' | vault write identity/oidc/role/agent-role -
 
 echo "=== 5. Vault: user-mcp database secrets engine (dynamic Postgres creds) ==="
 vault secrets list -format=json | jq -e 'has("database/")' >/dev/null || \
@@ -237,12 +238,13 @@ write_create=$(cat <<SQL
 CREATE ROLE "{{name}}" WITH LOGIN PASSWORD '{{password}}' VALID UNTIL '{{expiration}}';
 GRANT CONNECT ON DATABASE ${USERS_DB_NAME} TO "{{name}}";
 GRANT USAGE ON SCHEMA public TO "{{name}}";
-GRANT SELECT, INSERT, UPDATE, DELETE ON users TO "{{name}}";
+GRANT SELECT, INSERT, UPDATE ON users TO "{{name}}";
 GRANT USAGE, SELECT ON SEQUENCE users_id_seq TO "{{name}}";
 SQL
 )
 db_revoke=$(cat <<SQL
 REVOKE ALL PRIVILEGES ON users FROM "{{name}}";
+REVOKE ALL PRIVILEGES ON SEQUENCE users_id_seq FROM "{{name}}";
 REVOKE ALL PRIVILEGES ON SCHEMA public FROM "{{name}}";
 REVOKE CONNECT ON DATABASE ${USERS_DB_NAME} FROM "{{name}}";
 DROP ROLE IF EXISTS "{{name}}";

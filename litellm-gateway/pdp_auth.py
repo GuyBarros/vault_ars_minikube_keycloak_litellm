@@ -134,7 +134,8 @@ def _allowed_auth(caller: str | None, *, public: bool) -> Any:
 
 async def user_api_key_auth(request: Any, api_key: str) -> Any:
     path = request.url.path
-    caller = mesh_caller(header_value(request.headers, CALLER_HEADER))
+    caller_spiffe = header_value(request.headers, CALLER_HEADER)
+    caller = mesh_caller(caller_spiffe)
     decision = decide(path=path, caller=caller)
     request_id = header_value(request.headers, "x-request-id")
     if _should_audit(path, caller):
@@ -144,7 +145,10 @@ async def user_api_key_auth(request: Any, api_key: str) -> Any:
                 "event": "pdp_decision",
                 "PDP_Decision": decision,
                 "path": path,
-                "caller": caller,
+                # The full SPIFFE ID Envoy read from the caller's certificate, not reduced;
+                # caller_service is the "<namespace>/<service>" form the policy matches on.
+                "caller": caller_spiffe,
+                "caller_service": caller,
                 "request_id": request_id or "-",
                 "pep": "litellm-gateway/pdp_auth.user_api_key_auth",
                 "pdp": "litellm-gateway/pdp_auth.decide",

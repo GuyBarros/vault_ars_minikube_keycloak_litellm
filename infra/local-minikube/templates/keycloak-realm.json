@@ -161,7 +161,8 @@
       "attributes": {
         "token.exchange.grant.enabled": "true",
         "standard.token.exchange.enabled": "true",
-        "access.token.header.type.rfc9068": "true"
+        "access.token.header.type.rfc9068": "true",
+        "access.token.lifespan": "300"
       },
       "optionalClientScopes": [
         "users.read",

@@ -11,6 +11,7 @@ from exceptions.errors import (
     VerifyAuthorizationError,
     VerifyTokenExchangeError,
 )
+from keycloak.actor_token import ActorTokenValidator
 from keycloak.obo_broker import OBOBroker
 from keycloak.keycloak_client import KeycloakTokenExchangeClient
 
@@ -33,6 +34,13 @@ def _readonly_jwt() -> str:
     return _make_jwt(groups=["reader"])
 
 
+def _valid_actor() -> MagicMock:
+    """An actor validator that accepts any token (validation itself is tested in test_actor_token.py)."""
+    validator = MagicMock(spec=ActorTokenValidator)
+    validator.validate.return_value = {"agent_id": "ai-agent"}
+    return validator
+
+
 @pytest.fixture()
 def mock_verify_client():
     return MagicMock(spec=KeycloakTokenExchangeClient)
@@ -49,7 +57,7 @@ class TestExchangeOBOToken:
         subject_token = _admin_jwt()
         mock_verify_client.exchange_obo_token.return_value = {"access_token": access_token}
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         result = broker.exchange_obo_token(subject_token, "actor-tok", "users.read")
 
         assert result.access_token == access_token
@@ -64,7 +72,7 @@ class TestExchangeOBOToken:
         # Pre-populate using the same composed key the broker will compute.
         fresh_cache.set(subject_token, "actor-tok|users.read", access_token)
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         result = broker.exchange_obo_token(subject_token, "actor-tok", "users.read")
 
         assert result.access_token == access_token
@@ -74,14 +82,14 @@ class TestExchangeOBOToken:
     def test_verify_auth_error_propagates(self, mock_verify_client, fresh_cache):
         mock_verify_client.exchange_obo_token.side_effect = VerifyAuthenticationError("401")
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyAuthenticationError):
             broker.exchange_obo_token(_admin_jwt(), "actor-tok", "users.read")
 
     def test_verify_exchange_error_retries_then_raises(self, mock_verify_client, fresh_cache):
         mock_verify_client.exchange_obo_token.side_effect = VerifyTokenExchangeError("server error")
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyTokenExchangeError):
             broker.exchange_obo_token(_admin_jwt(), "actor-tok", "users.read")
 
@@ -98,7 +106,7 @@ class TestExchangeOBOToken:
             {"access_token": token_b},
         ]
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         result_a = broker.exchange_obo_token(subject_a, "actor-a", "users.read")
         result_b = broker.exchange_obo_token(subject_b, "actor-b", "users.read")
 
@@ -117,7 +125,7 @@ class TestExchangeOBOToken:
             {"access_token": write_token},
         ]
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         result_read = broker.exchange_obo_token(subject_token, "actor", "users.read")
         result_write = broker.exchange_obo_token(subject_token, "actor", "users.write")
 
@@ -134,7 +142,7 @@ class TestExchangeOBOToken:
         subject_token = _admin_jwt()
         mock_verify_client.exchange_obo_token.return_value = {"access_token": access_token}
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         first = broker.exchange_obo_token(subject_token, "actor", "users.write users.read")
         second = broker.exchange_obo_token(subject_token, "actor", "users.read users.write")
 
@@ -153,14 +161,14 @@ class TestAuthorizationCheck:
         access_token = _make_jwt()
         mock_verify_client.exchange_obo_token.return_value = {"access_token": access_token}
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         result = broker.exchange_obo_token(_readonly_jwt(), "actor-tok", "users.read")
 
         assert result.access_token == access_token
         mock_verify_client.exchange_obo_token.assert_called_once()
 
     def test_authz_denies_readonly_user_for_write_scope(self, mock_verify_client, fresh_cache):
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyAuthorizationError):
             broker.exchange_obo_token(_readonly_jwt(), "actor-tok", "users.write")
 
@@ -173,7 +181,7 @@ class TestAuthorizationCheck:
         subject_token = _make_jwt(groups=["writer"])
         mock_verify_client.exchange_obo_token.return_value = {"access_token": access_token}
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         result = broker.exchange_obo_token(
             subject_token, "actor-tok", "users.read users.write"
         )
@@ -185,14 +193,14 @@ class TestAuthorizationCheck:
         # JWT without a groups claim
         subject_token = _make_jwt()
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyAuthorizationError):
             broker.exchange_obo_token(subject_token, "actor-tok", "users.read")
 
         mock_verify_client.exchange_obo_token.assert_not_called()
 
     def test_authz_denies_when_unknown_scope_requested(self, mock_verify_client, fresh_cache):
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyAuthorizationError):
             broker.exchange_obo_token(_admin_jwt(), "actor-tok", "users.delete")
 
@@ -201,7 +209,7 @@ class TestAuthorizationCheck:
     def test_authz_denies_partial_match_in_multi_scope(self, mock_verify_client, fresh_cache):
         # readonly is allowed for users.read but not users.write; the multi-scope
         # request must fail because every scope must be authorized.
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyAuthorizationError):
             broker.exchange_obo_token(
                 _readonly_jwt(), "actor-tok", "users.read users.write"
@@ -214,8 +222,33 @@ class TestAuthorizationCheck:
         subject_token = _readonly_jwt()
         fresh_cache.set(subject_token, "actor-tok|users.write", _make_jwt())
 
-        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache)
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
         with pytest.raises(VerifyAuthorizationError):
             broker.exchange_obo_token(subject_token, "actor-tok", "users.write")
 
         mock_verify_client.exchange_obo_token.assert_not_called()
+
+
+class TestActorTokenValidation:
+    def test_invalid_actor_token_is_refused_before_keycloak_is_called(self, mock_verify_client, fresh_cache):
+        validator = MagicMock(spec=ActorTokenValidator)
+        validator.validate.side_effect = VerifyAuthenticationError("actor_token is not a valid Vault identity token")
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=validator)
+
+        with pytest.raises(VerifyAuthenticationError):
+            broker.exchange_obo_token(_admin_jwt(), "forged-actor", "users.read")
+
+        mock_verify_client.exchange_obo_token.assert_not_called()
+
+    def test_actor_is_validated_even_when_a_cached_token_exists(self, mock_verify_client, fresh_cache):
+        access_token = _make_jwt()
+        subject_token = _admin_jwt()
+        mock_verify_client.exchange_obo_token.return_value = {"access_token": access_token}
+        valid = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=_valid_actor())
+        valid.exchange_obo_token(subject_token, "actor-tok", "users.read")  # fills the cache
+
+        validator = MagicMock(spec=ActorTokenValidator)
+        validator.validate.side_effect = VerifyAuthenticationError("expired")
+        broker = OBOBroker(verify_client=mock_verify_client, cache=fresh_cache, actor_validator=validator)
+        with pytest.raises(VerifyAuthenticationError):
+            broker.exchange_obo_token(subject_token, "actor-tok", "users.read")
