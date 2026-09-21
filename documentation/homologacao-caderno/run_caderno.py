@@ -832,18 +832,28 @@ def main() -> None:
                 break
         except Exception:
             continue
-    required = ["event", "preferred_username", "LoA_Level", "PDP_Decision", "enforce", "pdp", "pep"]
+    required = [
+        "TransactionID",
+        "UserID",
+        "LoA_Level",
+        "Workload_mTLS_CN",
+        "PDP_Decision",
+        "PDP_Decision_ID",
+        "Timestamp_UTC",
+    ]
     present = [k for k in required if sample and k in sample] if sample else []
+    decision_ok = bool(sample) and sample.get("PDP_Decision") in {"ALLOW", "DENY", "STEP_UP", "STEP_UP_REQUIRED"}
+    loa_ok = bool(sample) and sample.get("LoA_Level") in {1, 2, 3}
     add(
         "CT-06.1",
         "Logs de auditoria e não-repúdio",
-        "PASS" if sample and len(present) >= 5 else "FAIL",
+        "PASS" if sample and present == required and decision_ok and loa_ok else "FAIL",
         request="tools/call anteriores geram print() JSON no stdout do LiteLLM",
         response={"sample": sample, "required_present": present},
         log=audit_lines[-2500:],
-        config="pdp_mcp.py _log_pdp_decision campos PDP_Decision, LoA_Level, pep, pdp, enforce, request_id",
+        config="litellm-gateway/audit_fields.py stamp_caderno_audit em todo print() do PEP",
         screenshot="ct-06-1-audit.png",
-        mapping="TransactionID≈request_id; UserID≈preferred_username; Workload_mTLS_CN≈SPIFFE; PDP_Decision_ID≈reason+package.",
+        mapping="TransactionID=request_id; UserID=preferred_username; Workload_mTLS_CN=SPIFFE x-mesh-caller-spiffe; PDP_Decision_ID=package:reason. PDP_Decision permanece o valor do PEP (ALLOW, DENY, STEP_UP_REQUIRED).",
     )
 
     # --- CT-06.2 fail-closed ---

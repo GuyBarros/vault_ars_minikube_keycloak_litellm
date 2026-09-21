@@ -13,15 +13,15 @@ make hop-logs
 
 Abre http://127.0.0.1:8753/. `serve.py` segue `kubectl logs -f` (web, ai-agent, token-exchange, litellm-gateway, user-mcp, ciba-channel, opa, vault) e empurra SSE em `/stream`. Use o canal em http://localhost:8080 ao mesmo tempo — não precisa de `collect-cluster.sh`.
 
-Três abas no **mesmo** stream:
+Três abas no **mesmo** stream. As três agrupam por `request_id`: o selo da requisição é a decisão (`tool · ALLOW/DENY · enforce · reason`).
 
 | Aba | Conteúdo |
 | --- | --- |
-| Fluxo / hops | Cada hop; bloco `pep` / `pdp` / `package` / `reason` / scopes |
-| Timeline por requisição | Eventos correlacionados por `request_id` |
-| Auditoria Vault / OBO | Mint OBO, `database/creds`, Transform, `pdp_decision` |
+| Fluxo / hops | Uma cadeia por requisição, só com os hops que dispararam |
+| Timeline por requisição | Os mesmos eventos, em ordem, com o JSON da linha sempre visível |
+| Auditoria Vault / OBO | Mint, credencial e decisão PEP, agrupados no mesmo request |
 
-Eventos úteis: `pdp_decision`, `jwt_identity_bound`, `vault_db_creds_issued`, `transform_encode`, `tool_invoked`, `ciba_started`, `ciba_approved`. CIBA só aparece em `create_user` / `delete_user_by_email`.
+Eventos úteis: `pdp_decision`, `token_chain_subject`, `token_chain_actor`, `jwt_identity_bound`, `vault_db_creds_issued`, `transform_encode`, `tool_invoked`, `ciba_started`, `ciba_approved`. CIBA só aparece em `create_user`. `delete_user_by_email` é `reason=tool_disabled`.
 
 `python3 -m http.server` **não** faz live: só serve arquivos estáticos. Dump opcional: `./collect-cluster.sh`.
 

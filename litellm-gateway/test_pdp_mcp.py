@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import asyncio
 import time
 
+from audit_fields import stamp_caderno_audit
 from pdp_mcp import (
     KeycloakIntrospector,
     ALLOW,
@@ -14,6 +15,29 @@ from pdp_mcp import (
     extra_headers_for,
     strip_bearer,
 )
+
+
+def test_caderno_step_up_fields():
+    stamped = stamp_caderno_audit(
+        {
+            "event": "pdp_decision",
+            "PDP_Decision": "STEP_UP_REQUIRED",
+            "LoA_Level": 1,
+            "request_id": "tx-1",
+            "preferred_username": "writer",
+            "Workload_mTLS_CN": "spiffe://cluster/ns/default/dc/dc1/svc/ai-agent",
+            "pdp_package": "mcp.pep",
+            "reason": "step-up",
+            "enforce": "await_ciba",
+        }
+    )
+    assert stamped["PDP_Decision"] == "STEP_UP_REQUIRED"
+    assert stamped["LoA_Level"] == 1
+    assert stamped["TransactionID"] == "tx-1"
+    assert stamped["UserID"] == "writer"
+    assert stamped["Workload_mTLS_CN"].endswith("/svc/ai-agent")
+    assert stamped["PDP_Decision_ID"] == "mcp.pep:step-up"
+    assert stamped["Timestamp_UTC"].endswith("Z")
 
 
 def test_strip_bearer():
@@ -96,6 +120,12 @@ def test_authorize_read_emits_pep_pdp_json(capsys):
     assert payload["granted_scopes"] == ["users.read", "users.write"]
     assert payload["loa2_tool"] is False
     assert payload["request_id"] == "req-1"
+    assert payload["TransactionID"] == "req-1"
+    assert payload["UserID"] == "writer"
+    assert payload["LoA_Level"] == 1
+    assert payload["Workload_mTLS_CN"] == "-"
+    assert payload["PDP_Decision_ID"] == "mcp.pep:allow"
+    assert payload["Timestamp_UTC"].endswith("Z")
 
 
 def test_authorize_reads_loa_from_the_users_acr_claim():

@@ -121,6 +121,7 @@ deploy:
 	  --from-file=pdp_auth.py=$(REPO_ROOT)/litellm-gateway/pdp_auth.py \
 	  --from-file=pdp_guardrail.py=$(REPO_ROOT)/litellm-gateway/pdp_guardrail.py \
 	  --from-file=pdp_mcp.py=$(REPO_ROOT)/litellm-gateway/pdp_mcp.py \
+	  --from-file=audit_fields.py=$(REPO_ROOT)/litellm-gateway/audit_fields.py \
 	  --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/litellm-gateway.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/litellm-gateway-gateway.yaml

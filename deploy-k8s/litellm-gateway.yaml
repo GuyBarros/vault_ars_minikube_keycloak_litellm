@@ -132,6 +132,10 @@ spec:
               mountPath: /app/pdp_mcp.py
               subPath: pdp_mcp.py
               readOnly: true
+            - name: litellm-config
+              mountPath: /app/audit_fields.py
+              subPath: audit_fields.py
+              readOnly: true
           resources:
             limits:
               memory: "2Gi"
