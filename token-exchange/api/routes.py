@@ -16,6 +16,8 @@ from app_logging.logger import get_logger
 from models.schemas import (
     OBOTokenRequest,
     OBOTokenResponse,
+    SubjectStatusRequest,
+    SubjectStatusResponse,
     TokenRequest,
     TokenResponse,
 )
@@ -111,6 +113,19 @@ async def exchange_obo_token(
         return JSONResponse(
             status_code=500, content={"detail": "Internal server error"}
         )
+
+
+@router.post("/v1/identity/subject-status", response_model=SubjectStatusResponse)
+async def subject_status(request: Request, body: SubjectStatusRequest) -> SubjectStatusResponse:
+    """Whether Keycloak still considers a subject token active (not revoked, session not ended)."""
+    try:
+        return SubjectStatusResponse(active=_obo_broker.subject_is_active(body.subject_token))
+    except VerifyTokenExchangeError as exc:
+        logger.error("subject_status_unavailable", error=str(exc))
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("verify_unavailable", error=str(exc))
+        return JSONResponse(status_code=503, content={"detail": "Keycloak is unavailable"})
 
 
 @router.get("/healthz")

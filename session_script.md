@@ -89,12 +89,15 @@ python3 scripts/demo_expired_jwt_rejected.py
 
 ### delete user bloqueado pela tool (delete users not in the catalog) show rego policy
 
-CT-05.1: Identificação de LoA Insuficiente pelo PDP
-CT-05.2: Execução com Sucesso do Fluxo de Step-up Auth
-CT-05.3: Re-tentativa e Sucesso da Operação Após Step-up Auth
-CT-05.4: Cancelamento do Step-up Auth pelo Usuário (Cenário Negativo)
+# CT-05.1: Identificação de LoA Insuficiente pelo PDP
 
-CT-06.1: Validação de Logs de Auditoria e Não-Repúdio. 
+# CT-05.2: Execução com Sucesso do Fluxo de Step-up Auth
+
+# CT-05.3: Re-tentativa e Sucesso da Operação Após Step-up Auth
+
+# CT-05.4: Cancelamento do Step-up Auth pelo Usuário (Cenário Negativo)
+
+# CT-06.1: Validação de Logs de Auditoria e Não-Repúdio. 
 
 CT-06.2: 
 kubectl --context local-minikube-demo -n opa scale deploy/opa-server --replicas=0

@@ -118,6 +118,9 @@ def _jwt_with_expiry(offset_seconds: int) -> str:
     return b".".join([header, payload, signature]).decode("utf-8")
 
 
+
+ACTOR_TOKEN = _jwt_with_expiry(3600)  # the agent now checks the actor token's exp, so it must be a JWT
+
 def _jwt_with_claims(offset_seconds: int, **extra_claims) -> str:
     header = base64.urlsafe_b64encode(
         json.dumps({"alg": "none", "typ": "JWT"}, separators=(",", ":")).encode(
@@ -148,7 +151,7 @@ def _structured_log_records(caplog, logger_name: str):
 @pytest.fixture(autouse=True)
 def isolate_runtime(tmp_path, monkeypatch):
     actor_token_path = tmp_path / "actor-token"
-    actor_token_path.write_text("actor-token", encoding="utf-8")
+    actor_token_path.write_text(ACTOR_TOKEN, encoding="utf-8")
 
     monkeypatch.setattr(agent_api.SETTINGS, "actor_token_path", actor_token_path)
     monkeypatch.setattr(agent_api.SETTINGS, "token_exchange_url", "http://token-exchange.local/obo")
@@ -171,6 +174,8 @@ def isolate_runtime(tmp_path, monkeypatch):
         logger=agent_api.LOGGER,
     )
     agent_api.app.state.token_service.clear_cache()
+    # The revocation check would call token-exchange; tests default to an active token.
+    monkeypatch.setattr(agent_api.app.state.token_service, "subject_is_active", lambda *a, **k: True)
     agent_api.app.state.actor_agent_id = agent_api._load_startup_agent_id(
         agent_api.app.state.token_service
     )
@@ -223,6 +228,26 @@ def test_expired_bearer_token_is_rejected(monkeypatch):
         "error": "invalid_token",
         "message": "Bearer token has expired.",
     }
+
+
+def test_revoked_bearer_token_is_rejected_before_anything_else_runs(monkeypatch):
+    client = TestClient(agent_api.app)
+    monkeypatch.setattr(agent_api.app.state.token_service, "subject_is_active", lambda *a, **k: False)
+
+    def fail_exchange(*args, **kwargs):
+        raise AssertionError("Token exchange should not run for a revoked access token.")
+
+    monkeypatch.setattr(agent_api.app.state.token_service, "perform_token_exchange", fail_exchange)
+
+    response = client.post(
+        "/v1/agent/query",
+        headers={"Authorization": f"Bearer {_jwt_with_expiry(300)}"},
+        json={"messages": [{"role": "user", "content": "hello"}]},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "invalid_token"
+    assert "no longer active" in response.json()["message"]
 
 
 def test_query_reads_actor_token_before_the_llm(monkeypatch):
@@ -406,7 +431,7 @@ def test_cached_tokens_can_be_retrieved_via_endpoint(monkeypatch):
     assert token_response.status_code == 200
     assert token_response.json() == {
         "obo_token": obo_token,
-        "actor_token": "actor-token",
+        "actor_token": ACTOR_TOKEN,
     }
 
 
@@ -540,7 +565,7 @@ def test_tokens_endpoint_returns_actor_with_null_obo_on_cache_miss(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {
-        "actor_token": "actor-token",
+        "actor_token": ACTOR_TOKEN,
         "obo_token": None,
     }
 
@@ -554,7 +579,7 @@ def test_tokens_endpoint_returns_actor_in_bypass_mode(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {
-        "actor_token": "actor-token",
+        "actor_token": ACTOR_TOKEN,
         "obo_token": None,
     }
 
@@ -590,7 +615,7 @@ def test_token_exchange_posts_subject_and_actor_tokens(monkeypatch, caplog):
     with caplog.at_level(logging.INFO, logger="agent_api"):
         obo_token, expiry_time = identity.perform_token_exchange(
             subject_token=access_token,
-            actor_token="actor-token",
+            actor_token=ACTOR_TOKEN,
             settings=agent_api.SETTINGS,
             logger=agent_api.LOGGER,
             request_id="request-1",
@@ -603,7 +628,7 @@ def test_token_exchange_posts_subject_and_actor_tokens(monkeypatch, caplog):
         "url": agent_api.SETTINGS.token_exchange_url,
         "payload": {
             "subject_token": access_token,
-            "actor_token": "actor-token",
+            "actor_token": ACTOR_TOKEN,
             "scope": "users.read",
         },
         "headers": {

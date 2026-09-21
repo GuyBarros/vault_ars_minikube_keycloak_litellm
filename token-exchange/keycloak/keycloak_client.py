@@ -122,3 +122,29 @@ class KeycloakTokenExchangeClient:
             raise VerifyTokenExchangeError(
                 "Keycloak returned a non-JSON response"
             ) from exc
+
+    def is_token_active(self, token: str) -> bool:
+        """Whether Keycloak still considers *token* active: not revoked and its
+        session not ended (introspection, RFC 7662). A JWT's own signature and
+        expiry say nothing about either, which is why this asks Keycloak.
+
+        Introspection is allowed for tokens whose audience includes this client,
+        which is true of the user's login token (the subject token).
+
+        Raises:
+            VerifyTokenExchangeError: Keycloak couldn't be asked (fail closed).
+        """
+        try:
+            response = requests.post(
+                f"{self._token_url}/introspect",
+                data={"token": token, "client_id": self._client_id, "client_secret": self._client_secret},
+                timeout=10,
+            )
+        except requests.exceptions.RequestException as exc:
+            raise VerifyTokenExchangeError(f"Network error contacting Keycloak: {exc}") from exc
+        if not response.ok:
+            raise VerifyTokenExchangeError(f"Keycloak token introspection failed with HTTP {response.status_code}")
+        try:
+            return bool(response.json().get("active"))
+        except Exception as exc:
+            raise VerifyTokenExchangeError("Keycloak returned a non-JSON response") from exc
