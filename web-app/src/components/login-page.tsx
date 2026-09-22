@@ -37,7 +37,7 @@ export function LoginPage({ error }: Props) {
             </div>
           ) : null}
           <div className="login-caption">
-            Secured with Keycloak, IBM watsonx Governance, HashiCorp Consul &amp; Vault.
+            Secured with Keycloak, Open Policy Agent, HashiCorp Consul &amp; Vault.
           </div>
         </div>
       </main>
