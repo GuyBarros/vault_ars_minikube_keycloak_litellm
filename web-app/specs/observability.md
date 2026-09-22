@@ -33,7 +33,7 @@ Structured JSON logs to stdout via [pino](https://github.com/pinojs/pino), one r
   "severity": "INFO",
   "logger": "verify_vault.api.agent.query",
   "module": "api.agent.query",
-  "message": "[user=alice@ibm.com] Streaming agent response"
+  "message": "[user=alice.demo@example.com] Streaming agent response"
 }
 ```
 
@@ -92,12 +92,12 @@ Convention: `getLogger('<area>.<module>')` returns a child of the root with `log
 
 **Successful login:**
 ```json
-{"timestamp":"…","level":"INFO","logger":"verify_vault.api.auth.callback","request_id":"a1b2…","request_path":"/api/auth/callback","message":"[user=alice@ibm.com] Authentication completed successfully"}
+{"timestamp":"…","level":"INFO","logger":"verify_vault.api.auth.callback","request_id":"a1b2…","request_path":"/api/auth/callback","message":"[user=alice.demo@example.com] Authentication completed successfully"}
 ```
 
 **Agent stream completed:**
 ```json
-{"timestamp":"…","level":"INFO","logger":"verify_vault.api.agent.query","request_id":"a1b2…","request_path":"/api/agent/query","message":"[user=alice@ibm.com] Streaming agent response","historyLength":4}
+{"timestamp":"…","level":"INFO","logger":"verify_vault.api.agent.query","request_id":"a1b2…","request_path":"/api/agent/query","message":"[user=alice.demo@example.com] Streaming agent response","historyLength":4}
 ```
 
 **Premature stream end recovery:**

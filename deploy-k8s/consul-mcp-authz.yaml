@@ -70,7 +70,7 @@ spec:
               containerPort: 8502
           env:
             - name: MCP_AUTHZ_API_VAULT_ADDR
-              value: "https://your-vault-lb-hostname.example.com:8200"
+              value: "https://<your-vault-lb-hostname>:8200"
             - name: MCP_AUTHZ_API_VAULT_TLS_VERIFY
               value: "false"
             - name: MCP_AUTHZ_API_VAULT_TOKEN_PATH

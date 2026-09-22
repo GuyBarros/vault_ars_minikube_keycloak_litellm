@@ -45,6 +45,7 @@ terraform.rc
 # Hop viewer live dumps (cluster logs; may contain PII)
 vault-log/live-dump.txt
 vault-log/live-snapshot.json
+vault-log/logs/
 
 __pycache__/
 *.pyc
@@ -62,3 +63,4 @@ deploy-k8s/*.env
 deploy-k8s/*.env.bkp
 scripts/.env
 scripts/out/
+ai-agent/.local/
