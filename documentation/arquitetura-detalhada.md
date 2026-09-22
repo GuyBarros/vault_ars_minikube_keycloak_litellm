@@ -75,14 +75,12 @@ opa-gov-api/             HTTP /evaluate e /mask na frente do OPA
 opa-mcp-auth/            Rego legado ext_authz + seed do catálogo Vault
 consul-mcp-authz/        UI/API operador do catálogo KV
 opa-policy-studio/       PoC browser para editar Rego (não sobe no make up)
-wx-gov-api/              Alternativa watsonx (não é o PDP do lab)
 vault-log/               Viewer SSE dos hops
 deploy-k8s/              Manifests + *.env (env git-ignored)
 infra/local-minikube/    make up / scripts do lab
 infra/config/            Licenças + bundle OPA
 infra/modules/           Terraform AWS (fora deste lab)
 documentation/           Guias e inventários
-web-app-deprecated/      Streamlit arquivado
 ```
 
 ---
@@ -209,8 +207,6 @@ API FastAPI (`api/`) + UI Next (`ui/`) no mesmo pod. CRUD do documento Vault `op
 | Pasta | Papel |
 | --- | --- |
 | `opa-policy-studio/` | Autoração Rego no browser |
-| `wx-gov-api/` | PDP watsonx; YAML `service-defaults-agent-wx-gov.yaml` não entra no deploy |
-| `web-app-deprecated/` | Streamlit |
 | `infra/modules/`, `infra/ami/` | AWS |
 
 ---

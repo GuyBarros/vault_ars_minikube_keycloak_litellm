@@ -52,20 +52,6 @@ spec:
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceIntentions
 metadata:
-  name: wx-gov-api
-  namespace: default
-spec:
-  destination:
-    name: wx-gov-api
-    namespace: default
-  sources:
-    - name: ai-agent
-      action: allow
-      namespace: default
----
-apiVersion: consul.hashicorp.com/v1alpha1
-kind: ServiceIntentions
-metadata:
   name: opa-service
   namespace: opa
 spec:

@@ -149,12 +149,6 @@ Mesmo contrato, Lua fino:
 
 Fail: **open**. Body vazio skip. `opa-gov-api` default `OPA_FAIL_MODE=open`; unwrap do envelope OPA **ligado**.
 
-### 2.4 Variante `service-defaults-agent-wx-gov.yaml` — Lua → `wx-gov-api`
-
-Igual ao 2.3, timeout **30 s**, body **base64**. `/evaluate` 400 bloqueia; `/mask` reescreve 200. Fail-open.
-
-PDP watsonx.governance (§4).
-
 ---
 
 ## 3. Regras do PDP OPA (o que o PEP A/C consulta)
@@ -204,22 +198,6 @@ Cadeia `regex.replace` na ordem:
 | Log level | `DEBUG\|INFO\|WARN\|ERROR\|FATAL` | `` `[LOG_LEVEL:$1]` `` |
 
 JSON válido → mascara a string e faz unmarshal; senão devolve string.
-
----
-
-## 4. Regras do PDP watsonx (variante wx-gov)
-
-`wx-gov-api/ai_guardrails_api.py` + `realtime_detections.py`.
-
-**Evaluate** — métricas, threshold **0.5**. Bloqueia se qualquer filtro **exceto `pii`** estourar:
-
-- `HarmMetric`
-- `HAPMetric`
-- `PromptSafetyRiskMetric(method="granite_guardian")`
-- `JailbreakMetric`
-- `UnethicalBehaviorMetric`
-
-**Mask** — policy watsonx (`CUSTOM_GUARDRAIL_POLICY_ID`), PII via Guardrails Manager. Não é o Rego da §3.3.
 
 ---
 
@@ -507,7 +485,6 @@ App (`deploy-k8s/service-intentions.yaml`):
 | `opa-gov-api` | `ai-agent`, `litellm-gateway` |
 | `opa-service` (ns `opa`) | `ai-agent`, `opa-gov-api` |
 | `opa-mcp-authz` | `user-mcp` |
-| `wx-gov-api` | `ai-agent` |
 | `web` | `web-api-gateway` |
 | `keycloak` | gateway, `token-exchange`, `user-mcp`, `litellm-gateway`, `web`, `ciba-channel` |
 | `ciba-channel` | `keycloak`, `ciba-channel-gateway` |

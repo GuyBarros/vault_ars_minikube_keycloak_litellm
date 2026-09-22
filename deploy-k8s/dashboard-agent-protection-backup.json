@@ -49,159 +49,8 @@
         },
         "id": 100,
         "panels": [],
-        "title": "Agent Runtime Protection — Policy Violations",
+        "title": "Agent Runtime Protection \u2014 Policy Violations",
         "type": "row"
-      },
-      {
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "description": "Counter increments once per /evaluate call where any of {prompt_safety_risk, jailbreak, harm, hap, unethical_behavior} > 0.5. Click to show matching logs.",
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "links": [
-              {
-                "targetBlank": false,
-                "title": "Filter logs — wx-gov violations (any metric > 0.5)",
-                "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22wx-gov-api%22%7D%20%7C%3D%20%22guardrails.metrics.completed%22%20%7C%20json%20%7C%20json%20harm%3D%22response.harm%22%2C%20hap%3D%22response.hap%22%2C%20unethical%3D%22response.unethical_behavior%22%2C%20prompt_safety_risk%3D%22response.prompt_safety_risk%22%2C%20jailbreak%3D%22response.jailbreak%22%20%7C%20harm%20%3E%200.5%20or%20hap%20%3E%200.5%20or%20unethical%20%3E%200.5%20or%20prompt_safety_risk%20%3E%200.5%20or%20jailbreak%20%3E%200.5%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
-              }
-            ],
-            "mappings": [],
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "color": "green",
-                  "value": 0
-                },
-                {
-                  "color": "red",
-                  "value": 1
-                }
-              ]
-            },
-            "unit": "short"
-          },
-          "overrides": []
-        },
-        "gridPos": {
-          "h": 6,
-          "w": 6,
-          "x": 0,
-          "y": 1
-        },
-        "id": 1,
-        "options": {
-          "colorMode": "value",
-          "graphMode": "area",
-          "justifyMode": "auto",
-          "orientation": "horizontal",
-          "percentChangeColorMode": "standard",
-          "reduceOptions": {
-            "calcs": [
-              "lastNotNull"
-            ],
-            "fields": "",
-            "values": true
-          },
-          "showPercentChange": false,
-          "textMode": "value_and_name",
-          "wideLayout": true
-        },
-        "pluginVersion": "12.4.2",
-        "targets": [
-          {
-            "expr": "sum(wxgov_violations_total)",
-            "instant": true,
-            "legendFormat": "Total",
-            "refId": "A"
-          },
-          {
-            "expr": "sum(rate(wxgov_violations_total[5m]))",
-            "instant": true,
-            "legendFormat": "Rate /s",
-            "refId": "B"
-          }
-        ],
-        "title": "wx-gov • Violations",
-        "type": "stat"
-      },
-      {
-        "datasource": {
-          "type": "prometheus",
-          "uid": "prometheus"
-        },
-        "fieldConfig": {
-          "defaults": {
-            "color": {
-              "mode": "thresholds"
-            },
-            "links": [
-              {
-                "targetBlank": false,
-                "title": "Filter logs — wx-gov PII masking completed",
-                "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22wx-gov-api%22%7D%20%7C%3D%20%22guardrails.masking.completed%22%20%7C%20json%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
-              }
-            ],
-            "mappings": [],
-            "thresholds": {
-              "mode": "absolute",
-              "steps": [
-                {
-                  "color": "green",
-                  "value": 0
-                }
-              ]
-            },
-            "unit": "short"
-          },
-          "overrides": []
-        },
-        "gridPos": {
-          "h": 6,
-          "w": 6,
-          "x": 6,
-          "y": 1
-        },
-        "id": 2,
-        "options": {
-          "colorMode": "value",
-          "graphMode": "area",
-          "justifyMode": "auto",
-          "orientation": "horizontal",
-          "percentChangeColorMode": "standard",
-          "reduceOptions": {
-            "calcs": [
-              "lastNotNull"
-            ],
-            "fields": "",
-            "values": true
-          },
-          "showPercentChange": false,
-          "textMode": "value_and_name",
-          "wideLayout": true
-        },
-        "pluginVersion": "12.4.2",
-        "targets": [
-          {
-            "expr": "sum(wxgov_pii_masking_successful_total)",
-            "instant": true,
-            "legendFormat": "Total",
-            "refId": "A"
-          },
-          {
-            "expr": "sum(rate(wxgov_pii_masking_successful_total[5m]))",
-            "instant": true,
-            "legendFormat": "Rate /s",
-            "refId": "B"
-          }
-        ],
-        "title": "wx-gov • PII Masked",
-        "type": "stat"
       },
       {
         "datasource": {
@@ -217,7 +66,7 @@
             "links": [
               {
                 "targetBlank": false,
-                "title": "Filter logs — OPA blocked requests",
+                "title": "Filter logs \u2014 OPA blocked requests",
                 "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22opa-gov-api%22%7D%20%7C%3D%20%22opa.security.blocked%22%20%7C%20json%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
               }
             ],
@@ -278,7 +127,7 @@
             "refId": "B"
           }
         ],
-        "title": "OPA • Violations",
+        "title": "OPA \u2022 Violations",
         "type": "stat"
       },
       {
@@ -294,7 +143,7 @@
             "links": [
               {
                 "targetBlank": false,
-                "title": "Filter logs — OPA pii_changed=true",
+                "title": "Filter logs \u2014 OPA pii_changed=true",
                 "url": "/d/${__dashboard.uid}?${__url_time_range}&var-loki_expr=%7Bservice_name%3D%22opa-gov-api%22%7D%20%7C%3D%20%22pii_changed%3Dtrue%22%20%7C%20json%20%7C%20label_format%20level%3D%22error%22%2C%20detected_level%3D%22error%22%20%7C%20line_format%20%22%7B%7B.request_id%7D%7D%20%20%7B%7B.service_name%7D%7D%20%20%7B%7B.event%7D%7D%20%20%7B%7B.message%7D%7D%22"
               }
             ],
@@ -351,7 +200,7 @@
             "refId": "B"
           }
         ],
-        "title": "OPA • PII Masked",
+        "title": "OPA \u2022 PII Masked",
         "type": "stat"
       },
       {
@@ -364,7 +213,7 @@
         },
         "id": 101,
         "panels": [],
-        "title": "Matching Logs — click a stat, then copy a request_id into the 'Trace request_id' box to see its full trace below",
+        "title": "Matching Logs \u2014 click a stat, then copy a request_id into the 'Trace request_id' box to see its full trace below",
         "type": "row"
       },
       {
@@ -372,7 +221,7 @@
           "type": "loki",
           "uid": "P8E80F9AEF21F6940"
         },
-        "description": "Step 1: click a stat above. Violation/event rows render red via level=error. Step 2: copy the request_id from any row and paste it into the 'Trace request_id' variable at the top of the dashboard — the panel below will show every log line for that request_id.",
+        "description": "Step 1: click a stat above. Violation/event rows render red via level=error. Step 2: copy the request_id from any row and paste it into the 'Trace request_id' variable at the top of the dashboard \u2014 the panel below will show every log line for that request_id.",
         "fieldConfig": {
           "defaults": {},
           "overrides": []
@@ -411,7 +260,7 @@
             "refId": "A"
           }
         ],
-        "title": "Matching violations — $loki_expr",
+        "title": "Matching violations \u2014 $loki_expr",
         "type": "logs"
       },
       {
@@ -424,7 +273,7 @@
         },
         "id": 102,
         "panels": [],
-        "title": "Full request trace — all logs for $trace_rid",
+        "title": "Full request trace \u2014 all logs for $trace_rid",
         "type": "row"
       },
       {
@@ -432,7 +281,7 @@
           "type": "loki",
           "uid": "P8E80F9AEF21F6940"
         },
-        "description": "Paste a request_id into the 'Trace request_id' dashboard variable at the top. This panel shows every log line (from wx-gov-api and opa-gov-api) sharing that request_id — the complete chain of actions that led to the violation.",
+        "description": "Paste a request_id into the 'Trace request_id' dashboard variable at the top. This panel shows every log line (from opa-gov-api) sharing that request_id \u2014 the complete chain of actions that led to the violation.",
         "fieldConfig": {
           "defaults": {
             "color": {
@@ -551,7 +400,7 @@
             "refId": "A"
           }
         ],
-        "title": "Full trace — request_id = $trace_rid",
+        "title": "Full trace \u2014 request_id = $trace_rid",
         "transformations": [
           {
             "id": "extractFields",
@@ -674,8 +523,7 @@
     "schemaVersion": 42,
     "tags": [
       "agent-runtime-protection",
-      "opa",
-      "watsonx-governance"
+      "opa"
     ],
     "templating": {
       "list": [
@@ -733,7 +581,7 @@
     },
     "timepicker": {},
     "timezone": "browser",
-    "title": "Agent Runtime Protection — OPA & watsonx.governance",
+    "title": "Agent Runtime Protection \u2014 OPA",
     "uid": "agent-protection",
     "version": 21,
     "weekStart": ""

@@ -94,14 +94,6 @@ kubectl apply -f deploy-k8s/opa-gov-api.yaml
 kubectl apply -f deploy-k8s/service-defaults-agent-opa-gov.yaml 
 ```
 
-## Deploy wx-gov-api (if testing watsonx-governance)
-```
-kubectl create secret generic wx-gov-api-env --from-env-file=deploy-k8s/wx-gov-api.env
-kubectl apply -f deploy-k8s/wx-gov-api.yaml
-
-kubectl apply -f deploy-k8s/service-defaults-agent-wx-gov.yaml 
-```
-
 ## Deploy opa-mcp-authz pilot (data-driven MCP authz)
 
 Prereqs: Vault KV v2 mount `opa-policies`, JWT auth at `auth/k8s_jwt`,
@@ -168,10 +160,6 @@ kubectl delete ns opa
 
 kubectl delete -f deploy-k8s/opa-gov-api.yaml                                 
 kubectl delete -f deploy-k8s/service-defaults-agent-opa-gov.yaml 
-
-kubectl delete secret wx-gov-api-env
-kubectl delete -f deploy-k8s/service-defaults-agent-wx-gov.yaml 
-kubectl delete -f deploy-k8s/wx-gov-api.yaml
 
 kubectl delete -f deploy-k8s/web-app-gateway.yaml
 

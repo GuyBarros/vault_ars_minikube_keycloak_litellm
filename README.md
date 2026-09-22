@@ -70,7 +70,6 @@ The main repo components are:
 | Component | Purpose |
 | --- | --- |
 | [`web-app/`](./web-app/) | Next.js 15 (App Router) + React 19 + TypeScript UI styled with the IBM Carbon Design System; handles Keycloak OAuth login, streaming AI chat, and the subject / actor / OBO token inspector |
-| [`web-app-deprecated/`](./web-app-deprecated/) | Archived Streamlit version of the web app, kept for reference only |
 | [`ai-agent/`](./ai-agent/) | FastAPI-based AI agent runtime that uses delegated identity and executes agent tools |
 | [`litellm-gateway/`](./litellm-gateway/) | PEP + AI Gateway (ConfigMap): SPIFFE `custom_auth`, CustomGuardrail `pdp_mcp.py` (OPA `mcp.pep` + CIBA), content guardrail, MCP nativo para `user-mcp` |
 | [`user-mcp/`](./user-mcp/) | FastMCP runtime (`USER_MCP_PEP_MODE=runtime`): tools de usuários, SQL, `database/creds` e Transform. JWT/scope/CIBA ficam no LiteLLM |
@@ -82,7 +81,6 @@ The main repo components are:
 | [`opa-mcp-auth/`](./opa-mcp-auth/) | Seed + Rego legado `ext_authz`. O catálogo KV ainda é a fonte; no lab quem consulta é o **opa-server** (`mcp.pep`), não o sidecar do MCP |
 | [`consul-mcp-authz/`](./consul-mcp-authz/) | UI/API operador do catálogo Vault `opa-policies/mcp-authz/catalog` |
 | [`vault-log/`](./vault-log/) | Viewer SSE dos hops (`make hop-logs` → http://127.0.0.1:8753/) |
-| [`wx-gov-api/`](./wx-gov-api/) | watsonx.governance policy engine (não é o PDP do `make up`) |
 | [`infra/`](./infra/) | Terraform and AMI build workflow for provisioning the demo platform, including Vault and Consul foundations |
 | [`deploy-k8s/`](./deploy-k8s/) | Kubernetes, Consul, and policy-enforcement deployment manifests plus deployment order |
 | [`documentation/agent_control_plane/`](./documentation/agent_control_plane/) | Product-level architecture diagrams for the agentic security control plane |
@@ -95,7 +93,7 @@ The main repo components are:
 ## Use cases covered
 
 - Unique non-human identity for agentic workloads using platform-native identity and a HashiCorp Vault OIDC identity token, automatically injected by the platform into agentic workloads without requiring code changes
-- Agentic runtime security with HashiCorp Consul, HashiCorp Vault, and pluggable policy engines (OPA and watsonx.governance) without requiring code changes, including prompt injection prevention, PII masking, sensitive data filtering, and unsafe action blocking
+- Agentic runtime security with HashiCorp Consul, HashiCorp Vault, and pluggable policy engines (OPA) without requiring code changes, including prompt injection prevention, PII masking, sensitive data filtering, and unsafe action blocking
 - Keycloak-authenticated user access combined with delegated on-behalf-of token exchange for downstream agent actions
 - Human-in-the-loop approval for `create_user` / `delete_user_by_email` via Keycloak CIBA: OPA `ciba_tools` decides; LiteLLM polls; humano em `:8082`
 - Deployment of the demo services into Kubernetes with Consul service mesh configuration and observability services
@@ -157,8 +155,7 @@ Use the component READMEs below for service-specific configuration, local develo
 | [`opa-mcp-auth/README.md`](./opa-mcp-auth/README.md) | Data-driven MCP tool authorization pilot — Rego policy, Vault KV v2 catalog seeding, OPA `--watch` hot-reload, and end-to-end live-reload tests against `user-mcp` |
 | [`consul-mcp-authz/README.md`](./consul-mcp-authz/README.md) | MCP authorization catalog API + operator UI — REST endpoints, single-image build (API + Next.js under supervisord), live MCP `tools/list` discovery, and UI walkthrough |
 | [`documentation/agentic_identity/platform_to_agentic_identity.md`](./documentation/agentic_identity/platform_to_agentic_identity.md) | Platform-native identity to Vault-issued agent identity design pattern |
-| [`documentation/agentic_runtime_security/ai_guardrails.md`](./documentation/agentic_runtime_security/ai_guardrails.md) | Runtime security architecture with Consul, Vault, OPA, and watsonx.governance |
-| [`wx-gov-api/README.md`](./wx-gov-api/README.md) | watsonx.governance policy engine service setup and API usage |
+| [`documentation/agentic_runtime_security/ai_guardrails.md`](./documentation/agentic_runtime_security/ai_guardrails.md) | Runtime security architecture with Consul, Vault, and OPA |
 
 ## Suggested read order
 

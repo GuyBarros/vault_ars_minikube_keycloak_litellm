@@ -252,6 +252,5 @@ A single `/evaluate` call flagged for both injection and unsafe code increments 
 ## References
 
 - [Open Policy Agent REST API](https://www.openpolicyagent.org/docs/latest/rest-api/)
-- Companion service: [`wx-gov-api/`](../wx-gov-api/) — watsonx.governance wrapper following the same conventions.
 - Envoy Lua filter being simplified: [`deploy-k8s/service-defaults-agent-opa.yaml`](../deploy-k8s/service-defaults-agent-opa.yaml).
 - Simplified Lua sketch for the follow-up: [`specs/lua-filter-after.md`](specs/lua-filter-after.md).

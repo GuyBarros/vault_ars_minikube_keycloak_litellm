@@ -1,6 +1,6 @@
 # web-app
 
-A Next.js (App Router) rebuild of the original Streamlit app (archived at `../web-app-deprecated/`), styled with the IBM Carbon Design System. Keycloak OAuth login, streaming chat, token inspector. No laboratório `AI_AGENT_API_URL` aponta para o **LiteLLM** (`:4000`), não para o pod `ai-agent`. Arquitetura: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
+A Next.js (App Router) rebuild of the original Streamlit app, styled with the IBM Carbon Design System. Keycloak OAuth login, streaming chat, token inspector. No laboratório `AI_AGENT_API_URL` aponta para o **LiteLLM** (`:4000`), não para o pod `ai-agent`. Arquitetura: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
 
 ## Stack
 
@@ -144,5 +144,5 @@ Unit tests cover: response normalization parity, stream-split escape buffer, PKC
 
 ## Notes
 
-- The previous Streamlit implementation is archived at `../web-app-deprecated/` for reference; this Next.js app replaces it.
+- This Next.js app replaces the original Streamlit implementation.
 - The app does **not** implement refresh tokens (matching the Streamlit app's behavior); users re-log in when the id_token expires.
