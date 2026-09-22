@@ -65,6 +65,9 @@ images:
 	minikube -p $(PROFILE) image load agentguard-opa-gov-api:local
 
 deploy:
+	# deploy-k8s/*.env are gitignored (real secrets); generate them from the
+	# tracked *.env.example templates if they aren't already there. Idempotent.
+	"$(DEPLOY_DIR)/setup-env.sh"
 	# Fail early if ai-agent is set to an Anthropic model but LiteLLM would get no key.
 	model=$$(grep '^LANGCHAIN_MODEL=' $(DEPLOY_DIR)/ai-agent.env | cut -d= -f2-); \
 	if [[ "$$model" =~ (anthropic|claude) && -z "$${ANTHROPIC_API_KEY:-}" ]]; then \
