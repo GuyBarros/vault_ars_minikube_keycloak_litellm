@@ -52,3 +52,13 @@ __pycache__/
 
 # Local minikube runtime material (tokens, TLS, Helm values)
 infra/local-minikube/generated/
+
+# macOS
+.DS_Store
+
+# Real per-service secrets — generate with deploy-k8s/setup-env.sh (templates
+# are the tracked deploy-k8s/*.env.example files)
+deploy-k8s/*.env
+deploy-k8s/*.env.bkp
+scripts/.env
+scripts/out/

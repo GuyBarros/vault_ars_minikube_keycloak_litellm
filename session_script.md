@@ -54,7 +54,7 @@ POD=$(kubectl --context local-minikube-demo get pod -l app=ai-agent -o jsonpath=
 
 kubectl --context local-minikube-demo debug "$POD" -c curl-$(date +%s) \
   --image=curlimages/curl --target=ai-agent -q --attach=true -- \
-  curl -sS -m 15 -i -X POST http://user-mcp.virtual.consul:8090/mcp \
+  curl -vvv -m 15 -i -X POST http://user-mcp.virtual.consul:8090/mcp \
     -H 'Content-Type: application/json' \
     -H 'Accept: application/json, text/event-stream' \
     -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_all_users","arguments":{}}}'

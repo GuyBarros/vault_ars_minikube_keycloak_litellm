@@ -4,6 +4,16 @@ Lab local: `make up` / `make deploy` em [`infra/local-minikube/`](../infra/local
 
 Este README é o apply **manual** (AWS/EKS ou debug). No minikube **não** ligue `ext_authz` no `user-mcp`: o catálogo é enforce no LiteLLM → OPA `mcp.pep`. `service-defaults-user-mcp.yaml` só tem timeout HTTP.
 
+## Generate the .env files
+
+`deploy-k8s/*.env` hold real secrets and are gitignored — only the sanitized `*.env.example` templates are tracked. Before creating any of the `kubectl create secret` commands below, run:
+
+```
+./deploy-k8s/setup-env.sh
+```
+
+This copies each `*.env.example` to `*.env` (skipping any that already exist) and fills in randomly generated values for `USER_MCP_DB_PASSWORD` and `SESSION_PASSWORD`. Keycloak client secrets are left blank — for the local minikube lab, `make keycloak` (`infra/local-minikube/keycloak.sh`) fills them in automatically; for a manual/EKS deploy, copy them from your Keycloak client configuration.
+
 ## Deploy Consul configurations
 ```
 kubectl apply -f deploy-k8s/proxy-defaults.yaml
