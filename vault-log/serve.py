@@ -27,7 +27,6 @@ WORKLOADS = (
     ("default", "deploy/token-exchange", "token-exchange", "token-exchange"),
     ("default", "deploy/litellm-gateway", "litellm-gateway", "litellm-gateway"),
     ("default", "deploy/user-mcp", "user-mcp", "user-mcp"),
-    ("default", "deploy/ciba-channel", "ciba-channel", "ciba-channel"),
     ("opa", "deploy/opa-server", "opa", "opa-server"),
     ("vault", "sts/vault", "vault", "vault"),
 )
@@ -37,7 +36,6 @@ SPIFFE_SERVICES = (
     "default/litellm-gateway",
     "default/user-mcp",
     "default/token-exchange",
-    "default/ciba-channel",
     "default/keycloak",
     "opa/opa-service",
     "vault/vault",

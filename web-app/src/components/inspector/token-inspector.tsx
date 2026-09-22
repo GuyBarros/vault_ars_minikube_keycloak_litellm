@@ -26,7 +26,7 @@ interface AssuranceData {
 
 const LOA_LABELS: Record<number, string> = {
   1: 'LoA 1 — Baseline (silent OBO)',
-  2: 'LoA 2 — Elevated (CIBA-approved)',
+  2: 'LoA 2 — Elevated (step-up verified)',
 };
 
 interface Props {

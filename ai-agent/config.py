@@ -63,10 +63,8 @@ def load_settings() -> Settings:
         # In cluster this is LiteLLM's MCP gateway (`/user_mcp/mcp`), not
         # user-mcp directly — LiteLLM is the PEP.
         user_mcp_url=os.getenv("USER_MCP_URL", "http://localhost:8090/mcp"),
-        # Must comfortably exceed user-mcp's CIBA poll wait
-        # (USER_MCP_CIBA_POLL_TIMEOUT_SECONDS, default 110s) — create_user
-        # blocks the MCP tool call until the human approves. The library's
-        # own default (30s) would cut it off early.
+        # Generous margin for a slow local LLM / tool round-trip. The
+        # library's own default (30s) is too tight for that.
         mcp_tool_call_timeout_seconds=float(
             os.getenv("MCP_TOOL_CALL_TIMEOUT_SECONDS", "120")
         ),

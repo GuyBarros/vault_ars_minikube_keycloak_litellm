@@ -16,22 +16,21 @@ Runtime = executa a tool depois da decisão.
 
 | Produto / processo | Papel | Faz | Não faz |
 | --- | --- | --- | --- |
-| **Consul** | API Gateway + malha | Norte-sul (`:8080` web, `:8081` Keycloak, `:8082` CIBA, `:4000` LiteLLM UI). mTLS SPIFFE e Service Intentions no leste-oeste. | Tool, scope, LoA, prompt, credencial Postgres |
-| **LiteLLM** | PEP + AI Gateway | Admissão SPIFFE (`pdp_auth.py`). Em cada `/v1/agent/*` vindo de `web`, JWKS do subject JWT (`aud=token-exchange`). Proxy `/v1/agent`, `/v1/chat/completions`, MCP `/user_mcp/mcp`. `tools/call`: JWT OBO/CIBA → OPA → injeta (`pdp_mcp.py`). | Guardar ACL. Executar SQL. Mintar credencial de banco |
-| **OPA `opa-server`** (`mcp.pep`) | PDP de IA (tools/call) | Catálogo Vault KV + `required_scopes` + `ciba_tools`. `POST /v1/data/mcp/pep/decision` | Interceptar HTTP. Falar com o browser |
+| **Consul** | API Gateway + malha | Norte-sul (`:8080` web, `:8081` Keycloak, `:4000` LiteLLM UI). mTLS SPIFFE e Service Intentions no leste-oeste. | Tool, scope, LoA, prompt, credencial Postgres |
+| **LiteLLM** | PEP + AI Gateway | Admissão SPIFFE (`pdp_auth.py`). Em cada `/v1/agent/*` vindo de `web`, JWKS do subject JWT (`aud=token-exchange`). Proxy `/v1/agent`, `/v1/chat/completions`, MCP `/user_mcp/mcp`. `tools/call`: JWT OBO → OPA → injeta (`pdp_mcp.py`). | Guardar ACL. Executar SQL. Mintar credencial de banco |
+| **OPA `opa-server`** (`mcp.pep`) | PDP de IA (tools/call) | Catálogo Vault KV + `required_scopes` + `loa2_tools`. `POST /v1/data/mcp/pep/decision` | Interceptar HTTP. Falar com o browser |
 | **OPA + `opa-gov-api`** | PDP de conteúdo (opcional) | Prompt injection / code safety via guardrail LiteLLM | Ligado no lab só se `OPA_GOV_API_URL` estiver setado; fail-closed se o OPA cair |
-| **Vault** | Segredos + CA da malha | Actor token do agente, `database/creds`, Transform PII, OAuth Resource Server, Connect CA, bundle/catálogo OPA | Decidir `tools/call`. Não é o PDP de catálogo/CIBA neste lab |
-| **Keycloak** | IdP | Login do humano, OBO RFC 8693, CIBA HITL | PEP de malha |
+| **Vault** | Segredos + CA da malha | Actor token do agente, `database/creds`, Transform PII, OAuth Resource Server, Connect CA, bundle/catálogo OPA | Decidir `tools/call`. Não é o PDP de catálogo neste lab |
+| **Keycloak** | IdP | Login do humano, OBO RFC 8693, step-up OTP (LoA 2) | PEP de malha |
 | **token-exchange** | Broker OBO | Troca JWT do usuário + actor Vault → JWT `aud=user-mcp` com scope | Catálogo MCP |
 | **ai-agent** | Orquestrador | Chat, escolhe tool, pede OBO, chama MCP **via LiteLLM** | PDP de tools/call |
-| **user-mcp** | Runtime MCP | SQL + retrieve Vault (`X-Vault-Token` = JWT). `USER_MCP_PEP_MODE=runtime`: extrai claims sem JWKS, sem scope/CIBA | ALLOW/DENY de tool (isso é LiteLLM+OPA) |
-| **web-app** | BFF | Login Keycloak, stream do chat para o LiteLLM | Falar direto com o agente ou com o MCP |
-| **ciba-channel** | Canal HITL | Approve/Deny em `:8082` | Política (quem precisa de CIBA) |
+| **user-mcp** | Runtime MCP | SQL + retrieve Vault (`X-Vault-Token` = JWT). `USER_MCP_PEP_MODE=runtime`: extrai claims sem JWKS, sem scope | ALLOW/DENY de tool (isso é LiteLLM+OPA) |
+| **web-app** | BFF | Login Keycloak, redireciona para step-up OTP quando exigido, stream do chat para o LiteLLM | Falar direto com o agente ou com o MCP |
 | **Ollama** (host) | LLM local | `qwen2.5:7b` em `0.0.0.0:11434`; LiteLLM usa `openai/qwen2.5:7b` contra `/v1` | |
 
 ---
 
-## 2. Fluxo de um `list users` (LoA 1, sem CIBA)
+## 2. Fluxo de um `list users` (LoA 1)
 
 ```
 Browser
@@ -62,7 +61,7 @@ Postgres                  SELECT; lease revogado ao fim
 ai-agent → web → browser
 ```
 
-`create_user` insere **CIBA** depois do OPA (`ciba_required`): LiteLLM poll Keycloak, humano em `:8082`, `enforce=inject_ciba_jwt`. Update é silencioso. `delete_user_by_email` é recusada no PEP antes do OPA e do CIBA (`enforce=deny`, `reason=tool_disabled`); o agente também não recebe essa tool.
+`create_user` exige LoA 2 (`enforce=step_up_login`): se o JWT não tem `acr=2`, o PEP nega e o web-app redireciona o humano para o step-up OTP do Keycloak; depois do OTP o retry chega com `acr=2` e o Vault valida de novo no login `jwt-keycloak`. Update é silencioso. `delete_user_by_email` é recusada no PEP antes do OPA (`enforce=deny`, `reason=tool_disabled`); o agente também não recebe essa tool.
 
 ---
 
@@ -74,12 +73,12 @@ ai-agent → web → browser
 | Admissão no AI Gateway | `pdp_auth.py` | SPIFFE em `{default/web, default/ai-agent}` | header `x-mesh-caller-spiffe` (Lua em `mesh-timeouts.yaml`) |
 | Catálogo MCP (qual tool) | `pdp_mcp.py` `pre_mcp_call` | `mcp.pep` + Vault KV `opa-policies/mcp-authz/catalog` | `infra/config/opa_policies/mcp_pep.rego` |
 | Scope da tool | idem | `required_scopes` no Rego | `users.read` / `users.write` |
-| HITL / LoA | LiteLLM poll CIBA + injeta JWT; `delete_user_by_email` é deny no PEP | `ciba_tools` = `create_user`; `disabled_tools` = `delete_user_by_email` | Keycloak CIBA + `ciba-channel` |
+| LoA (step-up) | PEP nega até `acr=2`; Vault valida de novo no login `jwt-keycloak` | `loa2_tools` = `create_user`; `disabled_tools` = `delete_user_by_email` | Keycloak step-up OTP |
 | Credencial Postgres | user-mcp pede; Vault recusa se ACL falhar | OAuth Resource Server + policies da entity | `database/creds/user-mcp-{read,write}-role` |
 | Máscara PII | user-mcp chama Transform | role `user-mcp-transform`; skip se `groups` contém `admin` | Vault Transform |
 | Prompt injection | guardrail LiteLLM (lab: código ON, efetivo só com OPA no ar) | bundle `opa-policies/bundle` via `opa-gov-api` | Lua no `ai-agent` **não** é aplicado pelo `make deploy` |
 
-O LiteLLM **não** tem ACL nativa para catálogo + CIBA + SPIFFE. YAML nativo cobre keys/allowlist/OBO RFC 8693; o restante é CustomGuardrail `pdp_mcp.py` + `custom_auth` `pdp_auth.py`.
+O LiteLLM **não** tem ACL nativa para catálogo + LoA + SPIFFE. YAML nativo cobre keys/allowlist/OBO RFC 8693; o restante é CustomGuardrail `pdp_mcp.py` + `custom_auth` `pdp_auth.py`.
 
 `ext_authz` no inbound de `user-mcp` está **desligado**. O catálogo no Vault continua; quem consulta é o **opa-server**, não o sidecar do MCP.
 
@@ -100,9 +99,9 @@ Três abas no **mesmo** SSE (`kubectl logs -f`):
 | Timeline por requisição | Eventos correlacionados por `request_id` |
 | Auditoria Vault / OBO | Mint OBO, `database/creds`, Transform, decisão PEP |
 
-UAT humano: http://localhost:8080 (`user`/`user` para list; `writer`/`writer` + `:8082` para create).
+UAT humano: http://localhost:8080 (`user`/`user` para list; `writer`/`writer` + OTP de step-up para create).
 
-Eventos JSON relevantes: `pdp_decision`, `jwt_identity_bound`, `vault_db_creds_issued`, `transform_encode`, `tool_invoked`, `ciba_started` / `ciba_approved`.
+Eventos JSON relevantes: `pdp_decision`, `jwt_identity_bound`, `vault_db_creds_issued`, `transform_encode`, `tool_invoked`.
 
 ---
 

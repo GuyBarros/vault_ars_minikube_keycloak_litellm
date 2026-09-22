@@ -43,9 +43,9 @@ class Settings(BaseSettings):
     allow_unauth_discovery: bool = Field(
         default=False, alias="USER_MCP_ALLOW_UNAUTH_DISCOVERY"
     )
-    # local = this process is the PEP (JWT/scope/CIBA). runtime = LiteLLM
+    # local = this process is the PEP (JWT/scope). runtime = LiteLLM
     # already decided; extract the inbound bearer without JWKS and skip
-    # scope/CIBA. Vault database/creds + Transform stay here.
+    # scope checks. Vault database/creds + Transform stay here.
     pep_mode: Literal["local", "runtime"] = Field(
         default="local", alias="USER_MCP_PEP_MODE"
     )
@@ -66,12 +66,10 @@ class Settings(BaseSettings):
     db_user: str = Field(default="", alias="USER_MCP_DB_USER")
     db_password: str = Field(default="", alias="USER_MCP_DB_PASSWORD")
 
-    # Vault (only used when USER_MCP_DB_AUTH_MODE=vault). jwt-keycloak login
-    # is used only to obtain a token to probe the CIBA-required-by-policy ACL
-    # switch (sys/capabilities-self on ciba/<action>/<user>) — the actual
-    # database/creds and Transform calls present the Keycloak OBO/CIBA JWT
-    # itself as X-Vault-Token, validated inline by Vault's OAuth Resource
-    # Server (see vault_client.py, storage/postgres_repo.py).
+    # Vault (only used when USER_MCP_DB_AUTH_MODE=vault). database/creds and
+    # Transform calls present the Keycloak OBO JWT itself as X-Vault-Token,
+    # validated inline by Vault's OAuth Resource Server (see vault_client.py,
+    # storage/postgres_repo.py).
     vault_addr: str = Field(default="", alias="USER_MCP_VAULT_ADDR")
     vault_namespace: str = Field(default="", alias="USER_MCP_VAULT_NAMESPACE")
     vault_jwt_path: str = Field(default="jwt-keycloak", alias="USER_MCP_VAULT_JWT_PATH")
@@ -88,33 +86,6 @@ class Settings(BaseSettings):
     vault_verify_tls: bool = Field(default=True, alias="USER_MCP_VAULT_VERIFY_TLS")
     vault_request_timeout_seconds: float = Field(
         default=10.0, alias="USER_MCP_VAULT_TIMEOUT_SECONDS"
-    )
-
-    # Keycloak CIBA — the HITL switch is a Vault ACL policy outcome on
-    # ciba/<action>/<user> (see infra/local-minikube/keycloak.sh):
-    # create/delete = HITL, update/read = silent OBO. This is just the HTTP
-    # calls to Keycloak's CIBA backchannel endpoints.
-    ciba_keycloak_url: str = Field(
-        default="", alias="USER_MCP_CIBA_KEYCLOAK_URL"
-    )
-    ciba_realm: str = Field(default="demo", alias="USER_MCP_CIBA_REALM")
-    ciba_client_id: str = Field(default="ciba-client", alias="USER_MCP_CIBA_CLIENT_ID")
-    ciba_client_secret: str = Field(default="", alias="USER_MCP_CIBA_CLIENT_SECRET")
-    ciba_poll_timeout_seconds: float = Field(
-        default=110.0, alias="USER_MCP_CIBA_POLL_TIMEOUT_SECONDS"
-    )
-    ciba_approve_url: str = Field(
-        default="http://localhost:8093", alias="USER_MCP_CIBA_APPROVE_URL"
-    )
-    # Sent as the CIBA token poll's delegation_actor form field, so
-    # CIBA-issued JWTs carry an `act` claim the same way OBO-exchanged ones
-    # do (see ciba_client.py) - without it, Vault's Agent Registry ceiling
-    # has no actor to match and denies every CIBA-approved database/
-    # transform call regardless of the human's own baseline ACL. Mounted by
-    # the same Vault Agent injection ai-agent uses for its own actor token
-    # (see deploy-k8s/user-mcp.yaml).
-    actor_token_path: str = Field(
-        default="/vault/secrets/actor-token", alias="USER_MCP_ACTOR_TOKEN_PATH"
     )
 
     @field_validator("log_level")
@@ -184,8 +155,5 @@ def load_settings() -> Settings:
         bypass_auth=settings.bypass_auth,
         pep_mode=settings.pep_mode,
         allow_unauth_discovery=settings.allow_unauth_discovery,
-        ciba_keycloak_url=settings.ciba_keycloak_url or None,
-        ciba_approve_url=settings.ciba_approve_url,
-        actor_token_path=settings.actor_token_path,
     )
     return settings

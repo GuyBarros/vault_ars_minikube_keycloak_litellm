@@ -23,11 +23,11 @@ class VaultClient:
     """Thin async Vault client.
 
     Secrets (database/creds, Transform) are called with the caller's
-    Keycloak OBO/CIBA JWT presented directly as X-Vault-Token — Vault 2.1's
+    Keycloak OBO JWT presented directly as X-Vault-Token — Vault 2.1's
     OAuth Resource Server validates it inline (see
     sys/config/oauth-resource-server in infra/local-minikube/keycloak.sh).
-    The jwt-keycloak JWT login is used only to obtain a token to probe the
-    CIBA-required-by-policy ACL switch.
+    The jwt-keycloak JWT login is used to validate an already-completed
+    step-up (see storage/postgres_repo.py:_jwt_for_vault).
     """
 
     def __init__(
@@ -97,49 +97,6 @@ class VaultClient:
         )
         return client_token
 
-    async def ciba_required_by_policy(
-        self,
-        client_token: str,
-        *,
-        action: str,
-        user: str,
-    ) -> bool:
-        """True when ACL policy for this action requires CIBA for this human.
-
-        Probe path is ciba/<action>/<username>. Edit the matching ACL
-        (ciba-list-users / ciba-write, in infra/local-minikube/keycloak.sh):
-        read = phone Approve, deny = silent OBO.
-        """
-        path = f"ciba/{action}/{user}"
-        url = f"{self._addr}/v1/sys/capabilities-self"
-        try:
-            async with httpx.AsyncClient(verify=self._verify_tls, timeout=self._timeout) as client:
-                resp = await client.post(
-                    url,
-                    json={"paths": [path]},
-                    headers=self._headers(client_token),
-                )
-        except httpx.HTTPError as exc:
-            raise AppError(
-                502,
-                "agent_error",
-                f"Vault capabilities-self failed (transport): {exc}",
-            ) from exc
-        if resp.status_code >= 400:
-            raise AppError(
-                _vault_status_to_app_status(resp.status_code),
-                _vault_status_to_app_error(resp.status_code),
-                "Vault capabilities-self rejected "
-                f"(status={resp.status_code}): {_safe_error_body(resp)}",
-            )
-        body = resp.json()
-        data = body.get("data") or {}
-        caps = data.get(path) or data.get("capabilities") or []
-        if not isinstance(caps, list):
-            caps = [caps]
-        caps_l = {str(c).lower() for c in caps}
-        return "read" in caps_l and "deny" not in caps_l
-
     async def read_database_creds(
         self, client_token: str, creds_path: str
     ) -> DynamicDbCredentials:
@@ -193,7 +150,7 @@ class VaultClient:
     ) -> str:
         """Mask *value* via Vault Transform's one-way masking transformation.
 
-        Presents the caller's Keycloak OBO/CIBA JWT directly as X-Vault-Token,
+        Presents the caller's Keycloak OBO JWT directly as X-Vault-Token,
         same as read_database_creds - see this class's own docstring.
         """
         url = f"{self._addr}/v1/transform/encode/{role_name}"

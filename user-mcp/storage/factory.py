@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from ciba_client import CibaClient
 from config import Settings
 from storage.base import UserRepository
 from storage.file_repo import FileUserRepository
@@ -13,7 +12,6 @@ def build_repository(settings: Settings) -> UserRepository:
         return FileUserRepository(file_path=settings.users_file)
 
     vault_client: VaultClient | None = None
-    ciba_client: CibaClient | None = None
     if settings.db_auth_mode == "vault":
         vault_client = VaultClient(
             addr=settings.vault_addr,
@@ -22,16 +20,6 @@ def build_repository(settings: Settings) -> UserRepository:
             verify_tls=settings.vault_verify_tls,
             timeout_seconds=settings.vault_request_timeout_seconds,
         )
-        if settings.pep_mode != "runtime":
-            ciba_client = CibaClient(
-                keycloak_url=settings.ciba_keycloak_url,
-                realm=settings.ciba_realm,
-                client_id=settings.ciba_client_id,
-                client_secret=settings.ciba_client_secret,
-                poll_timeout_seconds=settings.ciba_poll_timeout_seconds,
-                approve_url=settings.ciba_approve_url,
-                actor_token_path=settings.actor_token_path,
-            )
 
     return PostgresUserRepository(
         pg_url=settings.pg_url,
@@ -44,5 +32,4 @@ def build_repository(settings: Settings) -> UserRepository:
         vault_jwt_write_role=settings.vault_jwt_write_role,
         vault_db_read_path=settings.vault_db_read_path,
         vault_db_write_path=settings.vault_db_write_path,
-        ciba_client=ciba_client,
     )

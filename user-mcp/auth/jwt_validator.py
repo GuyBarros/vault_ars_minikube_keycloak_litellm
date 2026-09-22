@@ -31,7 +31,7 @@ _ANONYMOUS_DISCOVERY_IDENTITY: dict[str, Any] = {
 
 
 class JwtValidator:
-    """Validates Keycloak-issued OBO/CIBA JWTs against signature, audience,
+    """Validates Keycloak-issued OBO JWTs against signature, audience,
     issuer, and time claims."""
 
     def __init__(
@@ -98,7 +98,7 @@ def decode_unverified(token: str) -> dict[str, Any]:
     """Decode a JWT without signature / aud / iss / exp checks.
 
     Used when USER_MCP_PEP_MODE=runtime: LiteLLM already enforced those
-    checks and may have replaced the inbound OBO with a CIBA JWT.
+    checks.
     """
     try:
         claims = jwt.decode(

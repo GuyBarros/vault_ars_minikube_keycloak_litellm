@@ -154,24 +154,6 @@ const EVENT_META = {
     title: "Cadeia — actor (Vault)",
     icon: "M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z",
   },
-  ciba_started: {
-    color: "var(--c-broker)",
-    tag: "CIBA",
-    title: "CIBA iniciado — espera Approve",
-    icon: "M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z",
-  },
-  ciba_approved: {
-    color: "var(--c-obo)",
-    tag: "CIBA LoA2",
-    title: "CIBA aprovado — JWT elevado",
-    icon: "M9 12l2 2 4-4M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3Z",
-  },
-  ciba_denied: {
-    color: "var(--c-fail)",
-    tag: "CIBA negado",
-    title: "CIBA negado ou expirado",
-    icon: "M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3ZM9 9l6 6M15 9l-6 6",
-  },
   jwt_identity_bound: {
     color: "var(--c-request)",
     tag: "identidade",
@@ -554,7 +536,6 @@ function groupEvents(events) {
   const MESH_TYPES = new Set(["mesh_svid", "mesh_intention", "opa_catalog", "collect_skip"]);
   const ATTACH_TYPES = new Set([
     "pdp_decision", "token_chain_subject", "token_chain_actor",
-    "ciba_started", "ciba_approved", "ciba_denied",
     "jwt_identity_bound", "vault_db_creds_issued", "db_call", "transform_encode",
     "tool_invoked", "vault_lease_revoked",
   ]);
@@ -723,12 +704,6 @@ function eventDescription(ev) {
       ].filter((v) => typeof v === "string" && v && v !== "-");
       return escapeHtml(bits.join(" · "));
     }
-    case "ciba_started":
-      return `HITL para <code>${escapeHtml(j.login_hint || ev.user || "")}</code> · tool <code>${escapeHtml(j.binding_message || j.tool || "")}</code>${j.approve_url ? ` · <code>${escapeHtml(j.approve_url)}</code>` : ""}`;
-    case "ciba_approved":
-      return `Humano aprovou · JWT CIBA (LoA 2) para <code>${escapeHtml(j.login_hint || ev.user || "")}</code>`;
-    case "ciba_denied":
-      return `CIBA recusado/expirado · <code>${escapeHtml(j.ciba_error || "")}</code>`;
     case "jwt_identity_bound":
       return `user-mcp ligou <code>${escapeHtml(j.preferred_username || ev.user || "")}</code> · modo <code>${escapeHtml(j.pep_mode || "")}</code>${j.agent_id ? ` · agent <code>${escapeHtml(j.agent_id)}</code>` : ""}`;
     case "vault_db_creds_issued":
@@ -783,7 +758,6 @@ function eventExtra(ev, masked) {
   if (j.granted_scopes) kvs.push(["scopes no JWT", Array.isArray(j.granted_scopes) ? j.granted_scopes.join(", ") : String(j.granted_scopes)]);
   if (j.catalog_source) kvs.push(["catálogo source", j.catalog_source]);
   if (j.catalog_dest) kvs.push(["catálogo dest", j.catalog_dest]);
-  if (j.ciba_required != null && j.ciba_required !== "") kvs.push(["ciba_required", String(j.ciba_required)]);
   if (kvs.length) {
     out += `<div class="kv">` + kvs.map(([k, v]) => `<span><b>${k}:</b> ${escapeHtml(v)}</span>`).join("") + `</div>`;
   }
@@ -871,7 +845,6 @@ function flowEvents(events) {
     steps.push(e);
   }
 
-  push(pickLast(events, (e) => e.type === "ciba_approved" || e.type === "ciba_denied") || pickLast(events, (e) => e.type === "ciba_started"));
   push(pickLast(events, (e) => e.type === "jwt_identity_bound"));
   push(pickLast(events, (e) => e.type === "vault_db_creds_issued"));
   push(pickLast(events, (e) => e.type === "db_call"));
@@ -957,9 +930,6 @@ const AUDIT_META = {
   tool_invoked: { result: "use", label: "Ferramenta MCP executada (user-mcp)", color: "var(--c-tool)" },
   web_agent_error: { result: "fail", label: "Erro no agent service (web app)", color: "var(--c-fail)" },
   pdp_decision: { result: "ok", label: "Decisão PEP (LiteLLM / OPA)", color: "var(--c-obo)" },
-  ciba_started: { result: "request", label: "CIBA iniciado", color: "var(--c-broker)" },
-  ciba_approved: { result: "ok", label: "CIBA aprovado (identidade LoA 2)", color: "var(--c-obo)" },
-  ciba_denied: { result: "fail", label: "CIBA negado", color: "var(--c-fail)" },
   vault_db_creds_issued: { result: "ok", label: "Vault mintou credencial Postgres", color: "var(--c-obo)" },
   db_call: { result: "use", label: "Postgres com credencial dinâmica", color: "var(--c-tool)" },
   transform_encode: { result: "use", label: "Vault Transform (PII)", color: "var(--c-broker)" },
@@ -1104,7 +1074,7 @@ const HOP_DEFS = [
     id: "mesh-svid",
     title: "mTLS / SVID Consul Connect",
     role: "Consul",
-    responsibility: "Mint SPIFFE no sidecar consul-dataplane. Service Intentions decidem quem fala com quem. Não decide tool nem CIBA.",
+    responsibility: "Mint SPIFFE no sidecar consul-dataplane. Service Intentions decidem quem fala com quem. Não decide tool nem LoA.",
     match: (e) => e.type === "mesh_svid" || e.type === "mesh_intention",
   },
   {
@@ -1169,17 +1139,17 @@ const HOP_DEFS = [
     id: "mcp-pep",
     title: "PEP tools/call → OPA",
     role: "LiteLLM pdp_mcp.py + OPA mcp.pep",
-    responsibility: "Valida JWT OBO/CIBA (JWKS), pergunta catálogo / scope / CIBA. ALLOW, DENY ou STEP_UP. Terceiro elo da cadeia.",
+    responsibility: "Valida JWT OBO (JWKS), pergunta catálogo / scope / LoA. ALLOW, DENY ou STEP_UP. Terceiro elo da cadeia.",
     match: (e) => e.type === "pdp_decision" && e.json?.tool,
   },
   {
-    id: "ciba",
-    title: "Step-up CIBA (HITL)",
-    role: "LiteLLM + Keycloak + ciba-channel",
-    responsibility: "OPA marca ciba_required. O PEP faz poll. Approve em localhost:8082. JWT LoA 2 substitui o OBO.",
+    id: "step-up",
+    title: "Step-up (LoA)",
+    role: "LiteLLM + Keycloak",
+    responsibility: "OPA nega com step_up_required se acr < 2. web-app redireciona para o OTP do Keycloak; o retry chega com acr=2.",
     optional: true,
     optionalNote: "Não dispara em list/search/update. Só create_user. delete_user_by_email é recusada no PEP.",
-    match: (e) => ["ciba_started", "ciba_approved", "ciba_denied"].includes(e.type) || isStepUp(e.json?.PDP_Decision),
+    match: (e) => isStepUp(e.json?.PDP_Decision),
   },
   {
     id: "runtime-jwt",
@@ -1192,7 +1162,7 @@ const HOP_DEFS = [
     id: "vault-creds",
     title: "Vault mint credencial Postgres",
     role: "Vault ORS + user-mcp",
-    responsibility: "database/creds/{read|write}-role. JWT OBO/CIBA como X-Vault-Token. Vault não decide a tool.",
+    responsibility: "database/creds/{read|write}-role. JWT OBO como X-Vault-Token. Vault não decide a tool.",
     match: (e) => ["vault_db_creds_issued", "db_call"].includes(e.type),
   },
   {
@@ -1526,7 +1496,7 @@ function restoreLiveScroll(tl, prevScroll, nearBottom, collapsedIds) {
 function recomputeOutcome(evs) {
   const has = (t) => evs.some((e) => e.type === t);
   if (evs.some((e) => (e.type === "pdp_decision" || e.type === "token_chain_subject" || e.type === "token_chain_actor") && e.json?.PDP_Decision === "DENY")) return "denied";
-  if (has("scoped_tool_token_exchange_failed") || has("obo_token_exchange_internal_error") || has("obo_token_exchange_authz_denied") || has("ciba_denied")) return "denied";
+  if (has("scoped_tool_token_exchange_failed") || has("obo_token_exchange_internal_error") || has("obo_token_exchange_authz_denied")) return "denied";
   if (has("obo_token_exchange_completed") || has("verify_obo_token_exchange") || has("vault_db_creds_issued")) return "issued";
   if (has("scoped_tool_invoke") && !has("identity_broker_call")) return "cached";
   return "n/a";

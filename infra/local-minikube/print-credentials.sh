@@ -28,7 +28,6 @@ show keycloak_admin_password "keycloak admin (user admin)"
 show keycloak_db_password "keycloak db (user keycloak_user)"
 show keycloak_client_secret_web "keycloak client secret web"
 show keycloak_client_secret_token_exchange "keycloak client secret token-exchange"
-show keycloak_client_secret_ciba "keycloak client secret ciba"
 show keycloak_client_secret_user_mcp "keycloak client secret user-mcp"
 show keycloak_client_secret_litellm "keycloak client secret litellm"
 echo

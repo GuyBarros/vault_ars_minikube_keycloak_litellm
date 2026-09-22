@@ -53,7 +53,7 @@ kubectl apply -f deploy-k8s/user-mcp.yaml
 
 ## user-mcp ServiceDefaults (timeouts; sem ext_authz)
 
-No lab o inbound de `user-mcp` **não** usa `builtin/ext-authz`. O YAML só define `protocol: http` e timeout longo (CIBA). Catálogo: LiteLLM `pdp_mcp.py` + opa-server.
+No lab o inbound de `user-mcp` **não** usa `builtin/ext-authz`. O YAML só define `protocol: http` e timeout longo (margem para SQL/Vault sob LLM local lento). Catálogo: LiteLLM `pdp_mcp.py` + opa-server.
 
 ```
 kubectl apply -f deploy-k8s/service-defaults-user-mcp.yaml

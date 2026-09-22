@@ -15,9 +15,8 @@ from auth.context import (
     current_pep_assurance,
 )
 from auth.jwt_validator import decode_unverified
-from ciba_client import CibaClient
 from errors import AppError
-from loa import ALLOW, DENY, EXPIRED, LOA_BASELINE, LOA_ELEVATED, STEP_UP_REQUIRED, log_pdp_decision
+from loa import ALLOW, LOA_BASELINE, LOA_ELEVATED
 from logging_utils import bind_log_context, log_event
 from models import UserRecord
 from storage.base import UserRepository
@@ -80,11 +79,10 @@ class PostgresUserRepository(UserRepository):
     - ``direct``: a long-lived asyncpg pool authenticated with static
       USER_MCP_DB_USER / USER_MCP_DB_PASSWORD. Intended only for connectivity
       testing.
-    - ``vault``: every request presents the caller's Keycloak OBO (or CIBA)
-      JWT as ``X-Vault-Token``. Vault 2.1's OAuth Resource Server validates
-      it inline against the human's baseline ACL intersected with the
-      ai-agent's Agent Registry ceiling. jwt-keycloak login is used only to
-      probe the CIBA-required-by-policy ACL switch.
+    - ``vault``: every request presents the caller's Keycloak OBO JWT as
+      ``X-Vault-Token``. Vault 2.1's OAuth Resource Server validates it
+      inline against the human's baseline ACL intersected with the
+      ai-agent's Agent Registry ceiling.
     """
 
     def __init__(
@@ -101,7 +99,6 @@ class PostgresUserRepository(UserRepository):
         vault_jwt_write_role: str = "",
         vault_db_read_path: str = "",
         vault_db_write_path: str = "",
-        ciba_client: CibaClient | None = None,
     ):
         if not pg_url:
             raise AppError(
@@ -152,7 +149,6 @@ class PostgresUserRepository(UserRepository):
         self._jwt_write_role = vault_jwt_write_role
         self._db_read_path = vault_db_read_path
         self._db_write_path = vault_db_write_path
-        self._ciba = ciba_client
         self._pool: asyncpg.Pool | None = None
 
     async def startup(self) -> None:
@@ -214,10 +210,8 @@ class PostgresUserRepository(UserRepository):
                 yield conn
             return
 
-        # vault mode: present the Keycloak OBO/CIBA JWT as X-Vault-Token.
-        # Vault's OAuth Resource Server validates it inline; jwt-keycloak
-        # login is only used to probe CIBA policy per tool (create/delete
-        # HITL, update/read silent OBO — see keycloak.sh's ciba-* policies).
+        # vault mode: present the Keycloak OBO JWT as X-Vault-Token.
+        # Vault's OAuth Resource Server validates it inline.
         user = current_obo_user.get(None)
         obo_token = current_obo_token.get(None)
         scope = current_obo_scope.get(None) or ""
@@ -231,7 +225,7 @@ class PostgresUserRepository(UserRepository):
         jwt_role, db_creds_path = self._select_vault_targets(scope, write=write)
 
         assert self._vault is not None
-        vault_jwt = await self._jwt_for_vault(obo_token, jwt_role, user, action=action)
+        vault_jwt = await self._jwt_for_vault(obo_token, jwt_role, action=action)
         creds = await self._vault.read_database_creds(vault_jwt, db_creds_path)
 
         try:
@@ -286,115 +280,31 @@ class PostgresUserRepository(UserRepository):
                     )
 
     async def _jwt_for_vault(
-        self, obo_token: str, jwt_role: str, user: str, *, action: str
+        self, obo_token: str, jwt_role: str, *, action: str
     ) -> str:
         """Return the JWT Vault's OAuth Resource Server should see for this
-        tool call: the OBO token itself for silent-OBO actions, or a
-        Keycloak CIBA-approved JWT when the ciba/<action>/<user> ACL policy
-        requires a human to approve first (see loa.py for the PDP_Decision
-        audit-log vocabulary this emits)."""
+        tool call: the OBO token itself, with a Vault login only to validate
+        an already-completed step-up (see loa.py for the PDP_Decision
+        audit-log vocabulary)."""
         assert self._vault is not None
-        if self._ciba is None:
-            # Runtime mode: LiteLLM already probed Vault and completed CIBA.
-            pep = current_pep_assurance.get(None) or {}
-            # LoA comes from the JWT (Keycloak's signed `acr` claim); the
-            # PEP headers are only the fallback for tokens without one.
-            claim_loa = decode_unverified(obo_token).get("acr")
-            current_loa = int(claim_loa or pep.get("current_loa") or LOA_BASELINE)
-            required_loa = int(pep.get("required_loa") or current_loa)
-            if required_loa >= LOA_ELEVATED:
-                # The write role binds acr == "2", so Vault validates the step-up.
-                await self._vault.login_with_jwt(obo_token, jwt_role)
-            _last_assurance.set(
-                {
-                    "tool": action,
-                    "decision": pep.get("decision") or ALLOW,
-                    "current_loa": current_loa,
-                    "required_loa": required_loa,
-                }
-            )
-            return obo_token
-        parent = await self._vault.login_with_jwt(obo_token, jwt_role)
-        need = await self._vault.ciba_required_by_policy(parent, action=action, user=user)
-        if not need:
-            # No PDP_Decision log line here deliberately - this is the common
-            # case (every read, most writes) and logging it at the same
-            # level as an actual step-up would bury the signal. last_assurance
-            # is still recorded so the caller sees a real LoA 1 for this call,
-            # not just silence.
-            _last_assurance.set(
-                {
-                    "tool": action,
-                    "decision": ALLOW,
-                    "current_loa": LOA_BASELINE,
-                    "required_loa": LOA_BASELINE,
-                }
-            )
-            return obo_token
-
-        log_pdp_decision(
-            LOGGER,
-            tool_name=action,
-            decision=STEP_UP_REQUIRED,
-            current_loa=LOA_BASELINE,
-            required_loa=LOA_ELEVATED,
-            preferred_username=user,
-        )
-        try:
-            ciba_jwt = await self._request_ciba(user, action=action)
-        except AppError as exc:
-            expired = exc.error == "invalid_request" and "expired" in exc.message.lower()
-            decision = EXPIRED if expired else DENY
-            log_pdp_decision(
-                LOGGER,
-                tool_name=action,
-                decision=decision,
-                current_loa=LOA_BASELINE,
-                required_loa=LOA_ELEVATED,
-                preferred_username=user,
-            )
-            _last_assurance.set(
-                {
-                    "tool": action,
-                    "decision": decision,
-                    "current_loa": LOA_BASELINE,
-                    "required_loa": LOA_ELEVATED,
-                }
-            )
-            raise
-        log_pdp_decision(
-            LOGGER,
-            tool_name=action,
-            decision=ALLOW,
-            current_loa=LOA_ELEVATED,
-            required_loa=LOA_ELEVATED,
-            preferred_username=user,
-        )
+        pep = current_pep_assurance.get(None) or {}
+        # LoA comes from the JWT (Keycloak's signed `acr` claim); the
+        # PEP headers are only the fallback for tokens without one.
+        claim_loa = decode_unverified(obo_token).get("acr")
+        current_loa = int(claim_loa or pep.get("current_loa") or LOA_BASELINE)
+        required_loa = int(pep.get("required_loa") or current_loa)
+        if required_loa >= LOA_ELEVATED:
+            # The write role binds acr == "2", so Vault validates the step-up.
+            await self._vault.login_with_jwt(obo_token, jwt_role)
         _last_assurance.set(
             {
                 "tool": action,
-                "decision": ALLOW,
-                "current_loa": LOA_ELEVATED,
-                "required_loa": LOA_ELEVATED,
+                "decision": pep.get("decision") or ALLOW,
+                "current_loa": current_loa,
+                "required_loa": required_loa,
             }
         )
-        return ciba_jwt
-
-    async def _request_ciba(self, user: str, *, action: str) -> str:
-        if self._ciba is None:
-            raise AppError(
-                403,
-                "invalid_request",
-                f"Vault policy requires CIBA for action {action} but CIBA is "
-                "not configured on user-mcp.",
-            )
-        write_actions = {"create_user", "delete_user_by_email", "update_user_by_email"}
-        scope = "openid users.write" if action in write_actions else "openid users.read"
-        return await self._ciba.fetch_access_token(
-            login_hint=user,
-            binding_message=action,
-            scope=scope,
-        )
+        return obo_token
 
     def _select_vault_targets(
         self, scope: str, *, write: bool

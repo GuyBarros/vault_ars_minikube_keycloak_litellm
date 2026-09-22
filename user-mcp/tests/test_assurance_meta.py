@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+import jwt
 import pytest
 from fastmcp import Client, FastMCP
 
@@ -11,19 +12,15 @@ from storage.postgres_repo import PostgresUserRepository
 from tools.users import register_tools
 from vault_client import DynamicDbCredentials
 
+# _jwt_for_vault always calls decode_unverified() on the OBO token now (no
+# more local/CIBA branch), so tests need a real 3-segment JWT rather than a
+# bare placeholder string.
+_FAKE_JWT = jwt.encode({"sub": "test"}, "test-secret", algorithm="HS256")
+
 
 class FakeVaultClient:
-    """Controls whether ciba_required_by_policy demands step-up, so tests
-    can force either LoA path deterministically."""
-
-    def __init__(self, ciba_required: bool):
-        self._ciba_required = ciba_required
-
     async def login_with_jwt(self, jwt_token, role):
         return "parent-vault-token"
-
-    async def ciba_required_by_policy(self, client_token, *, action, user):
-        return self._ciba_required
 
     async def read_database_creds(self, client_token, creds_path):
         return DynamicDbCredentials(
@@ -35,11 +32,6 @@ class FakeVaultClient:
 
     async def transform_encode(self, client_token, role_name, transformation, value):
         return f"MASKED({transformation})"
-
-
-class FakeCibaClient:
-    async def fetch_access_token(self, login_hint, binding_message, scope):
-        return "ciba-approved-jwt"
 
 
 def _row(email="a@example.com"):
@@ -68,27 +60,26 @@ class FakeConnection:
         return None
 
 
-def _make_repo(monkeypatch, *, ciba_required: bool, rows):
+def _make_repo(monkeypatch, *, rows):
     monkeypatch.setattr(
         postgres_repo_module.asyncpg, "connect", AsyncMock(return_value=FakeConnection(rows))
     )
     return PostgresUserRepository(
         pg_url="postgresql://example/db",
         auth_mode="vault",
-        vault_client=FakeVaultClient(ciba_required=ciba_required),
+        vault_client=FakeVaultClient(),
         vault_jwt_read_role="user-mcp-oidc-read",
         vault_jwt_write_role="user-mcp-oidc-write",
         vault_db_read_path="database/creds/user-mcp-read-role",
         vault_db_write_path="database/creds/user-mcp-write-role",
-        ciba_client=FakeCibaClient(),
     )
 
 
 async def test_read_tool_result_carries_baseline_assurance(monkeypatch):
-    repo = _make_repo(monkeypatch, ciba_required=False, rows=[_row()])
+    repo = _make_repo(monkeypatch, rows=[_row()])
     mcp = FastMCP(name="assurance-test")
     register_tools(mcp, repo)
-    tokens = bind_request_identity(token="tok", scope="users.read", user="user", groups=["reader"])
+    tokens = bind_request_identity(token=_FAKE_JWT, scope="users.read", user="user", groups=["reader"])
     try:
         async with Client(mcp) as client:
             result = await client.call_tool("list_all_users", {})
@@ -104,48 +95,13 @@ async def test_read_tool_result_carries_baseline_assurance(monkeypatch):
     assert result.structured_content["result"][0]["email"] == "a@example.com"
 
 
-async def test_write_tool_result_carries_elevated_assurance_after_ciba(monkeypatch):
-    repo = _make_repo(monkeypatch, ciba_required=True, rows=[_row("new@example.com")])
-    mcp = FastMCP(name="assurance-test")
-    register_tools(mcp, repo)
-    tokens = bind_request_identity(token="tok", scope="users.write", user="admin", groups=["admin"])
-    try:
-        async with Client(mcp) as client:
-            result = await client.call_tool(
-                "create_user",
-                {"user": {"email": "new@example.com", "first_name": "New", "last_name": "User"}},
-            )
-    finally:
-        reset_request_identity(tokens)
-
-    assert result.meta["assurance"] == {
-        "tool": "create_user",
-        "decision": "ALLOW",
-        "current_loa": 2,
-        "required_loa": 2,
-    }
-    assert result.structured_content["email"] == "new@example.com"
-
-
-async def test_runtime_mode_skips_ciba_and_uses_pep_headers(monkeypatch):
+async def test_write_tool_carries_elevated_assurance_from_pep_headers(monkeypatch):
     from auth.context import bind_pep_assurance, reset_pep_assurance
 
-    repo = PostgresUserRepository(
-        pg_url="postgresql://example/db",
-        auth_mode="vault",
-        vault_client=FakeVaultClient(ciba_required=True),
-        vault_jwt_read_role="user-mcp-oidc-read",
-        vault_jwt_write_role="user-mcp-oidc-write",
-        vault_db_read_path="database/creds/user-mcp-read-role",
-        vault_db_write_path="database/creds/user-mcp-write-role",
-        ciba_client=None,
-    )
-    monkeypatch.setattr(
-        postgres_repo_module.asyncpg, "connect", AsyncMock(return_value=FakeConnection([_row()]))
-    )
+    repo = _make_repo(monkeypatch, rows=[_row()])
     mcp = FastMCP(name="assurance-runtime")
     register_tools(mcp, repo)
-    tokens = bind_request_identity(token="ciba-from-gateway", scope="users.write", user="admin", groups=["admin"])
+    tokens = bind_request_identity(token=_FAKE_JWT, scope="users.write", user="admin", groups=["admin"])
     pep = bind_pep_assurance(
         {"decision": "ALLOW", "current_loa": 2, "required_loa": 2}
     )

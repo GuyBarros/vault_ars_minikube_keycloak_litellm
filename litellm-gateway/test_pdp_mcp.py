@@ -28,7 +28,7 @@ def test_caderno_step_up_fields():
             "Workload_mTLS_CN": "spiffe://cluster/ns/default/dc/dc1/svc/ai-agent",
             "pdp_package": "mcp.pep",
             "reason": "step-up",
-            "enforce": "await_ciba",
+            "enforce": "step_up_login",
         }
     )
     assert stamped["PDP_Decision"] == "STEP_UP_REQUIRED"

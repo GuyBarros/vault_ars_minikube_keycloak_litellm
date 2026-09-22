@@ -21,7 +21,6 @@ WORKLOADS=(
   "default token-exchange app"
   "default litellm-gateway app"
   "default user-mcp app"
-  "default ciba-channel app"
   "default keycloak app"
   "opa opa-server app"
   "vault vault vault"
@@ -33,7 +32,6 @@ SPIFFE_SERVICES=(
   "default/litellm-gateway"
   "default/user-mcp"
   "default/token-exchange"
-  "default/ciba-channel"
   "default/keycloak"
   "opa/opa-service"
   "vault/vault"
@@ -107,7 +105,7 @@ snapshot = {
         "SPIFFE IDs are the Consul Connect SVID shape this lab mints (trust domain / namespace / datacenter / service), read from Consul.",
         "pdp_auth.py admits default/web and default/ai-agent from x-mesh-caller-spiffe (Envoy Lua copies uriSanPeerCertificate).",
         "Vault mints Postgres creds (database/creds) and Transform encodings; it does not decide tools/call.",
-        "OPA mcp.pep decides catalog + scope + CIBA; LiteLLM pdp_mcp.py enforces and polls Keycloak.",
+        "OPA mcp.pep decides catalog + scope; LiteLLM pdp_mcp.py enforces.",
     ],
 }
 
@@ -192,7 +190,6 @@ dump_logs default ai-agent ai-agent ai-agent
 dump_logs default token-exchange token-exchange token-exchange
 dump_logs default litellm-gateway litellm-gateway litellm-gateway
 dump_logs default user-mcp user-mcp user-mcp
-dump_logs default ciba-channel ciba-channel ciba-channel
 dump_logs opa opa-server opa opa-server
 dump_logs vault vault vault vault
 

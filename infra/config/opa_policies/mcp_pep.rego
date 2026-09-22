@@ -54,7 +54,6 @@ scope_ok if {
 # CT-01.2: Autenticação Multifator / MFA (LoA=2) - PDP
 decision := {
 	"allow": false,
-	"ciba_required": false,
 	"reason": "tool_disabled",
 } if {
 	input.tool in disabled_tools

@@ -44,10 +44,9 @@ def register_tools(mcp: FastMCP, repo: UserRepository) -> None:
     enforce them on every invocation (defense in depth — agents must pass a
     correctly-scoped OBO token, and this server independently verifies it).
 
-    Writes may additionally block on a human-in-the-loop CIBA approval.
-    In USER_MCP_PEP_MODE=local that gate lives in storage/postgres_repo.py
-    (driven by a ciba/<action>/<user> Vault ACL policy switch). In runtime
-    mode LiteLLM already completed CIBA and this dispatcher only executes.
+    Writes additionally require a Keycloak step-up (LoA elevation, see
+    loa.py and storage/postgres_repo.py:_jwt_for_vault) already reflected
+    in the caller's JWT/PEP headers by the time this dispatcher runs.
     """
 
     for tool_name, scopes in TOOL_SCOPE_REQUIREMENTS.items():
@@ -105,8 +104,7 @@ def register_tools(mcp: FastMCP, repo: UserRepository) -> None:
         name="create_user",
         description=(
             "Create a new user. Use this when the caller asks to add a user. "
-            "Email must be unique. This may pause while the caller approves the "
-            "request on their device (a CIBA push) before the user is created."
+            "Email must be unique."
         ),
         meta=_meta_for("create_user"),
     )
@@ -122,9 +120,7 @@ def register_tools(mcp: FastMCP, repo: UserRepository) -> None:
         name="delete_user_by_email",
         description=(
             "Delete a user by email and return the deleted record. "
-            "Use this when the caller asks to remove or delete a user by email. "
-            "This may pause while the caller approves the request on their device "
-            "(a CIBA push) before the user is deleted."
+            "Use this when the caller asks to remove or delete a user by email."
         ),
         meta=_meta_for("delete_user_by_email"),
     )

@@ -2,11 +2,7 @@
   "realm": "demo",
   "enabled": true,
   "attributes": {
-    "token-exchange": "true",
-    "cibaBackchannelTokenDeliveryMode": "poll",
-    "cibaExpiresIn": "120",
-    "cibaInterval": "5",
-    "cibaAuthRequestedUserHint": "login_hint"
+    "token-exchange": "true"
   },
   "sslRequired": "none",
   "registrationAllowed": false,
@@ -196,72 +192,9 @@
       ]
     },
     {
-      "clientId": "ciba-client",
-      "name": "ciba-client",
-      "description": "Confidential client that starts CIBA when Vault policy requires human approval before a write",
-      "enabled": true,
-      "clientAuthenticatorType": "client-secret",
-      "secret": "__CIBA_CLIENT_SECRET__",
-      "protocol": "openid-connect",
-      "publicClient": false,
-      "standardFlowEnabled": false,
-      "implicitFlowEnabled": false,
-      "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": false,
-      "fullScopeAllowed": false,
-      "defaultClientScopes": ["openid", "profile", "roles"],
-      "optionalClientScopes": ["users.read", "users.write"],
-      "attributes": {
-        "oidc.ciba.grant.enabled": "true",
-        "ciba.backchannel.token.delivery.mode": "poll",
-        "access.token.header.type.rfc9068": "true"
-      },
-      "protocolMappers": [
-        {
-          "name": "vault-jwt-compat",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-vault-jwt-compat-mapper",
-          "consentRequired": false,
-          "config": {
-            "access.token.claim": "true",
-            "id.token.claim": "false",
-            "userinfo.token.claim": "false"
-          }
-        },
-        {
-          "name": "aud-user-mcp",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-audience-mapper",
-          "consentRequired": false,
-          "config": {
-            "included.client.audience": "user-mcp",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-            "introspection.token.claim": "true",
-            "lightweight.claim": "true"
-          }
-        },
-        {
-          "name": "ciba-preferred_username",
-          "protocol": "openid-connect",
-          "protocolMapper": "oidc-usermodel-property-mapper",
-          "consentRequired": false,
-          "config": {
-            "user.attribute": "username",
-            "claim.name": "preferred_username",
-            "jsonType.label": "String",
-            "id.token.claim": "false",
-            "access.token.claim": "true",
-            "userinfo.token.claim": "false",
-            "introspection.token.claim": "true"
-          }
-        }
-      ]
-    },
-    {
       "clientId": "user-mcp",
       "name": "user-mcp",
-      "description": "Resource server — the audience for RFC 8693 exchanged and CIBA tokens",
+      "description": "Resource server — the audience for RFC 8693 exchanged tokens",
       "enabled": true,
       "clientAuthenticatorType": "client-secret",
       "secret": "__USER_MCP_CLIENT_SECRET__",

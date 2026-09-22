@@ -2,11 +2,11 @@
 # Login to Vault's jwt-keycloak auth method and mint a dynamic Postgres user
 # for both the reader and writer roles.
 #
-# jwt-keycloak login is the CIBA-policy probe (user-mcp-oidc-read / -write).
+# jwt-keycloak login validates a step-up (user-mcp-oidc-read / -write).
 # Postgres users are issued at database/creds/* with the Keycloak JWT as
 # X-Vault-Token (OAuth Resource Server), same path user-mcp uses.
 #
-# JWT_TOKEN must be an OBO/CIBA access token with aud=user-mcp:
+# JWT_TOKEN must be an OBO access token with aud=user-mcp:
 #   reader  → groups reader|writer|admin and scope containing users.read
 #   writer  → groups writer|admin and scope containing users.write
 #
@@ -14,7 +14,7 @@
 #   JWT_TOKEN=eyJ... ./scripts/vault-jwt-postgres-user.sh
 #   VAULT_ADDR=https://127.0.0.1:18200 JWT_TOKEN=eyJ... ./scripts/vault-jwt-postgres-user.sh
 set -eu
-: "${JWT_TOKEN:?JWT_TOKEN is required (Keycloak OBO/CIBA JWT, aud=user-mcp)}"
+: "${JWT_TOKEN:?JWT_TOKEN is required (Keycloak OBO JWT, aud=user-mcp)}"
 VAULT_ADDR="${VAULT_ADDR:-https://127.0.0.1:18200}"
 VAULT_SKIP_VERIFY="${VAULT_SKIP_VERIFY:-true}"
 VAULT_NAMESPACE="${VAULT_NAMESPACE:-}"

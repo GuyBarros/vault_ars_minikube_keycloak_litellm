@@ -1,6 +1,6 @@
 # User MCP
 
-This service is a FastMCP-based Model Context Protocol server that exposes user-management tools (`list_all_users`, `search_users_by_first_name`, `create_user`, `delete_user_by_email`, `update_user_by_email`) over **streamable HTTP**. In the mesh lab, [`ai-agent`](../ai-agent/) talks MCP to LiteLLM (`/user_mcp/mcp`); LiteLLM is the PEP (JWT, catalog, scope, CIBA) and this process is the **runtime** (`USER_MCP_PEP_MODE=runtime`): it extracts the inbound bearer without JWKS, skips scope/CIBA, and still presents the JWT to Vault as `X-Vault-Token` for `database/creds` and Transform. Set `USER_MCP_PEP_MODE=local` to run this server as the PEP again (JWKS + `scope_check` + CIBA probe).
+This service is a FastMCP-based Model Context Protocol server that exposes user-management tools (`list_all_users`, `search_users_by_first_name`, `create_user`, `delete_user_by_email`, `update_user_by_email`) over **streamable HTTP**. In the mesh lab, [`ai-agent`](../ai-agent/) talks MCP to LiteLLM (`/user_mcp/mcp`); LiteLLM is the PEP (JWT, catalog, scope, LoA) and this process is the **runtime** (`USER_MCP_PEP_MODE=runtime`): it extracts the inbound bearer without JWKS, skips the scope check, and still presents the JWT to Vault as `X-Vault-Token` for `database/creds` and Transform (Vault revalidates a required step-up via the JWT's `acr` claim). Set `USER_MCP_PEP_MODE=local` to run this server as the PEP again (JWKS + `scope_check`).
 
 ### Tool → scope contract
 
@@ -61,13 +61,13 @@ The application exposes a single MCP endpoint over streamable HTTP:
 High-level request flow (`USER_MCP_PEP_MODE=runtime`, o `make up`):
 
 1. The Starlette ASGI app receives a streamable-HTTP POST (from LiteLLM, not from the agent).
-2. `JwtAuthMiddleware` extracts `Authorization: Bearer …` and **decodes without JWKS** (`jwt_identity_bound`). LiteLLM already validated the token and completed CIBA if required.
+2. `JwtAuthMiddleware` extracts `Authorization: Bearer …` and **decodes without JWKS** (`jwt_identity_bound`). LiteLLM already validated the token and, for `create_user`, already required a step-up.
 3. Identity is bound into logging `ContextVar`s so `database/creds` / Transform still see `preferred_username`, `scope`, `groups`.
-4. The FastMCP server dispatches the JSON-RPC call. Scope and CIBA checks are skipped.
-5. The tool delegates to `UserRepository`. In Postgres + Vault mode the repo presents the inbound JWT as `X-Vault-Token` and mints dynamic Postgres credentials, then closes the connection.
+4. The FastMCP server dispatches the JSON-RPC call. The scope check is skipped.
+5. The tool delegates to `UserRepository`. In Postgres + Vault mode the repo presents the inbound JWT as `X-Vault-Token` and mints dynamic Postgres credentials, then closes the connection. If the JWT's `acr` claim requires it, the repo first logs in to Vault's `jwt-keycloak` mount, which independently revalidates the step-up via `bound_claims.acr`.
 6. Application errors become FastMCP `ToolError`.
 
-`USER_MCP_PEP_MODE=local` restores JWKS + `require_scopes` + Vault CIBA probe in this process (not the lab path). See [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
+`USER_MCP_PEP_MODE=local` restores JWKS + `require_scopes` in this process (not the lab path). See [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
 
 ## Available tools
 
@@ -75,17 +75,17 @@ High-level request flow (`USER_MCP_PEP_MODE=runtime`, o `make up`):
 | --- | --- | --- | --- |
 | `list_all_users` | — | `UserRecord[]` | All users currently stored. |
 | `search_users_by_first_name` | `first_name: str` | `UserRecord[]` | Exact, case-insensitive first-name match. |
-| `create_user` | `user: UserRecord` | `UserRecord` | Create a new user. Email must be unique. Errors 400 on duplicate email. May block on a CIBA approval — see below. |
+| `create_user` | `user: UserRecord` | `UserRecord` | Create a new user. Email must be unique. Errors 400 on duplicate email. Requires a Keycloak step-up (LoA 2) — see below. |
 | `update_user_by_email` | `email: str`, `user: UserRecord` | `UserRecord` | Replace the user identified by `email`. Errors 404 if missing, 400 on email collision. |
-| `delete_user_by_email` | `email: str` | `UserRecord` | Delete by email. Errors 404 if missing. May block on a CIBA approval — see below. |
+| `delete_user_by_email` | `email: str` | `UserRecord` | Disabled at the PEP (`disabled_tools` in `mcp_pep.rego`); the agent is never given this tool. |
 
 `UserRecord` accepts `email` (required, RFC-validated) plus optional `first_name`, `last_name`, `ssn`, `phone`, `credit_card_number`, `ip_address`, and arbitrary additional fields (`extra="allow"`).
 
-### CIBA gate on writes
+### Step-up (LoA) gate on `create_user`
 
-**Lab (`USER_MCP_PEP_MODE=runtime`):** LiteLLM + OPA `ciba_tools` (`create_user`, `delete_user_by_email`). This process does not poll Keycloak.
+**Lab (`USER_MCP_PEP_MODE=runtime`):** LiteLLM + OPA `loa2_tools` (`create_user`) deny with `step_up_required` until the caller's JWT carries `acr=2`; the web app then redirects the human through a Keycloak OTP step-up. This process does not talk to Keycloak.
 
-**`USER_MCP_PEP_MODE=local`:** every write probes Vault `sys/capabilities-self` on `ciba/<action>/<user>` (`ciba-list-users` / `ciba-write` in `keycloak.sh`). `deny` → OBO silencioso; `read` → `ciba_client.py` until Approve em `USER_MCP_CIBA_APPROVE_URL`. See [`KEYCLOAK_REALM_SETUP.md`](../KEYCLOAK_REALM_SETUP.md).
+**Both modes:** on the write path, `user-mcp` logs in to Vault's `jwt-keycloak` mount with the `user-mcp-oidc-write` role, whose `bound_claims` require `acr: "2"` — Vault independently revalidates the step-up rather than trusting the PEP alone. See [`KEYCLOAK_REALM_SETUP.md`](../KEYCLOAK_REALM_SETUP.md).
 
 ## Storage backends
 
@@ -105,7 +105,7 @@ Selected by `USER_MCP_DB_AUTH_MODE`:
 
 When `USER_MCP_DB_AUTH_MODE=vault`, the storage layer:
 
-1. **Runtime (lab):** skip CIBA probe. **Local:** probe `ciba/<action>/<user>` then maybe poll Keycloak (see above).
+1. **If the tool requires LoA 2** (`create_user`), logs in to Vault's `jwt-keycloak` mount with the inbound JWT to revalidate the step-up (see above). Otherwise skipped.
 2. **Reads DB creds** — `GET {VAULT_ADDR}/v1/{<db-creds-path>}` with the inbound JWT as `X-Vault-Token`. Vault OAuth Resource Server validates it, returns unique `username` / `password`. The lease is revoked when the tool call finishes.
 
 The repo then opens `asyncpg.connect(USER_MCP_PG_URL, user=…, password=…)`, runs the SQL, and closes the connection.
@@ -150,16 +150,10 @@ The service reads environment variables from the process environment and also lo
 | `USER_MCP_VAULT_NAMESPACE` | (unset) | Vault Enterprise namespace. Leave empty for OSS. |
 | `USER_MCP_VAULT_VERIFY_TLS` | `true` | Verify Vault's TLS certificate. |
 | `USER_MCP_VAULT_TIMEOUT_SECONDS` | `10` | HTTP timeout for Vault calls. |
-| `USER_MCP_CIBA_KEYCLOAK_URL` | (unset) | Keycloak base URL for the CIBA backchannel endpoints. |
-| `USER_MCP_CIBA_REALM` | `demo` | Keycloak realm name. |
-| `USER_MCP_CIBA_CLIENT_ID` | `ciba-client` | Keycloak CIBA client id. |
-| `USER_MCP_CIBA_CLIENT_SECRET` | (unset) | Keycloak CIBA client secret. |
-| `USER_MCP_CIBA_POLL_TIMEOUT_SECONDS` | `110` | How long a write blocks waiting for CIBA approval before giving up. |
-| `USER_MCP_CIBA_APPROVE_URL` | `http://localhost:8093` | Where a human goes to approve/deny a pending CIBA request (the `ciba-channel` service). |
-| `USER_MCP_VAULT_JWT_PATH` | `jwt-keycloak` | Vault JWT auth mount used only to probe the CIBA-required-by-policy switch. |
+| `USER_MCP_VAULT_JWT_PATH` | `jwt-keycloak` | Vault JWT auth mount used to revalidate a completed step-up. |
 | `USER_MCP_VAULT_JWT_READ_ROLE` | `user-mcp-oidc-read` | JWT auth role name selected when the OBO scope grants only `users.read`. |
-| `USER_MCP_VAULT_JWT_WRITE_ROLE` | `user-mcp-oidc-write` | JWT auth role name selected when the OBO scope grants `users.write`. |
-| `USER_MCP_VAULT_DB_READ_PATH` | `database/creds/user-mcp-read-role` | Vault path that issues read-only Postgres credentials (read via Vault's OAuth Resource Server, X-Vault-Token = the OBO/CIBA JWT). |
+| `USER_MCP_VAULT_JWT_WRITE_ROLE` | `user-mcp-oidc-write` | JWT auth role name selected when the OBO scope grants `users.write`; its `bound_claims` require `acr: "2"`. |
+| `USER_MCP_VAULT_DB_READ_PATH` | `database/creds/user-mcp-read-role` | Vault path that issues read-only Postgres credentials (read via Vault's OAuth Resource Server, X-Vault-Token = the OBO JWT). |
 | `USER_MCP_VAULT_DB_WRITE_PATH` | `database/creds/user-mcp-write-role` | Vault path that issues read/write Postgres credentials. |
 
 Logs are emitted as JSON to stderr with the same field shape as `ai-agent` (`timestamp`, `level`, `logger`, `hostname`, `host_ip`, `process_id`, `module`, `function`, `method_name`, `line_number`, `message`, plus per-request `request_id`, `preferred_username`, `actor_agent_id`, `auth_scope`). Tool entry/failure are logged at INFO; tool success and JWKS cache hits are at DEBUG.

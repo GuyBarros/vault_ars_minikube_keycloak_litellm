@@ -20,7 +20,7 @@ upstream client. Now it follows the tool's own contract:
    `OboTokenService.resolve_token(scopes=required_scopes)` for an OBO carrying
    *only* those scopes (cached by `(subject_token, role, frozenset(scopes))`),
    builds a transient MCP client with that OBO, and calls the upstream tool.
-4. **Defense in depth no lab:** LiteLLM `pdp_mcp.py` + OPA `mcp.pep` re-check catalog and scope before the call reaches `user-mcp`. Em `USER_MCP_PEP_MODE=runtime` o MCP **não** revalida JWKS/scope/CIBA; em `local` o dispatcher ainda chama `require_scopes`.
+4. **Defense in depth no lab:** LiteLLM `pdp_mcp.py` + OPA `mcp.pep` re-check catalog and scope before the call reaches `user-mcp`. Em `USER_MCP_PEP_MODE=runtime` o MCP **não** revalida JWKS/scope; em `local` o dispatcher ainda chama `require_scopes`.
 
 A single line traces each call: `event=scoped_tool_invoke tool=<name>
 required_scopes=<list>` at INFO. The token-exchange service emits one
@@ -139,7 +139,7 @@ The service reads environment variables from the process environment and also lo
 | `OBO_ROLE_NAME` | `agent-runtime` | Cache key input for OBO token reuse (combined with subject token + scope set) |
 | `BYPASS_AUTH_TOKEN_EXCHANGE` | `false` | When `true`, `/v1/agent/query` does not require `Authorization` and skips OBO token exchange; `/v1/agent/tokens` will not return cached tokens |
 | `USER_MCP_URL` | `http://localhost:8090/mcp` | Full URL of the upstream `user-mcp` streamable-HTTP endpoint, including the mount path. Must match `USER_MCP_HOST` / `USER_MCP_PORT` / `USER_MCP_PATH` on the `user-mcp` service. |
-| `MCP_TOOL_CALL_TIMEOUT_SECONDS` | `120` | HTTP timeout for every MCP tool call to `user-mcp` (discovery and per-call). Must exceed `user-mcp`'s CIBA poll wait (`USER_MCP_CIBA_POLL_TIMEOUT_SECONDS`, default 110s) — the MCP client library's own default (30s) is too short for `create_user` / `delete_user_by_email`. |
+| `MCP_TOOL_CALL_TIMEOUT_SECONDS` | `120` | HTTP timeout for every MCP tool call to `user-mcp` (discovery and per-call) — generous margin for a slow local LLM / tool round-trip; the MCP client library's own default (30s) is too tight. |
 | `HOST` | `0.0.0.0` | Bind host |
 | `PORT` | `8000` | Bind port |
 | `LOG_LEVEL` | `INFO` | Logging level |

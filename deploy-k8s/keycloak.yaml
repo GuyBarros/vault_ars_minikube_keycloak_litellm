@@ -24,8 +24,6 @@ spec:
           args:
             - start-dev
             - --import-realm
-            - --features=ciba
-            - --spi-ciba-auth-channel-ciba-http-auth-channel-http-authentication-channel-uri=http://ciba-channel.default.svc.cluster.local:8093/ciba/authn
           ports:
             - containerPort: 8080
             - containerPort: 9000

@@ -33,7 +33,7 @@ class UserRepository(ABC):
     def get_last_assurance(self) -> dict | None:
         """The PDP_Decision (LoA level reached, ALLOW/DENY/...) for the most
         recent call on *this request*. Only PostgresUserRepository has a real
-        concept of this (Vault CIBA step-up) - the file backend has no
+        concept of this (Vault step-up validation) - the file backend has no
         assurance mechanism, so the default is always None."""
         return None
 

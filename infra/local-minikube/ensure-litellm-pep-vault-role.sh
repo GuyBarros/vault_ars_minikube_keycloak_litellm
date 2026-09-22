@@ -1,5 +1,5 @@
 #!/bin/bash
-# Idempotent Vault policy + k8s JWT role so LiteLLM can inject the CIBA
+# Idempotent Vault policy + k8s JWT role so LiteLLM can inject the agent
 # actor token, and so opa-server can read the MCP catalog + bundle.
 # Safe to re-run after bootstrap.
 set -euo pipefail

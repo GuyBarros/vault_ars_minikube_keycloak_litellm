@@ -12,9 +12,9 @@ PDP = ponto que **calcula** a decisão.
 
 | Produto | Papel | Responsabilidade |
 | --- | --- | --- |
-| **Consul** | API Gateway | Norte-sul do canal (`web-api-gateway` :8080, Keycloak :8081, CIBA :8082, LiteLLM UI :4000). mTLS SPIFFE e Service Intentions no leste-oeste. Não decide tool, LoA, prompt nem credencial. |
+| **Consul** | API Gateway | Norte-sul do canal (`web-api-gateway` :8080, Keycloak :8081, LiteLLM UI :4000). mTLS SPIFFE e Service Intentions no leste-oeste. Não decide tool, LoA, prompt nem credencial. |
 | **LiteLLM** | PEP + AI Gateway | ALLOW / DENY / STEP_UP de tráfego de IA (`web → agente`, `agente → LLM`, `agente → MCP`). Consulta o **OPA**; não guarda ACL; não executa SQL. |
-| **OPA (`opa-server`)** | PDP | Fonte da decisão de IA: catálogo MCP, tool→scope, interruptor CIBA. Bundle + catalog no Vault KV; o OPA calcula. Guardrail de conteúdo (`opa-gov-api`) é separado e opcional. |
+| **OPA (`opa-server`)** | PDP | Fonte da decisão de IA: catálogo MCP, tool→scope, interruptor de LoA. Bundle + catalog no Vault KV; o OPA calcula. Guardrail de conteúdo (`opa-gov-api`) é separado e opcional. |
 | **Vault** | Segredos | Credenciais (`database/creds`, Transform, actor token, CA Connect). Não intercepta o hop HTTP; **não** decide tools/call. |
 
 Keycloak = IdP. `user-mcp` = runtime de tool (SQL + retrieve de credenciais no Vault), **sem** PEP no modo `runtime`.
@@ -56,7 +56,7 @@ web-app
 │                                              efetivo com    │
 │                                              OPA_GOV_API_URL)│
 │  • mask /PII no gateway                     (NÃO existe)    │
-│  • catálogo + JWT/scope/CIBA pdp_mcp.py     (ATIVO)         │
+│  • catálogo + JWT/scope pdp_mcp.py          (ATIVO)         │
 └─────────────────────────────────────────────────────────────┘
   │                    │                    │
   ▼                    ▼                    ▼
@@ -64,7 +64,7 @@ ai-agent          Ollama/OpenAI          user-mcp runtime
   │                                        │  JWT inbound (sem JWKS)
   │  Lua inbound (4 variantes)             │  SQL + database/creds
   │    NÃO aplicado pelo `make deploy`     │  Transform PII
-  │                                        │  (sem CIBA / sem ext_authz)
+  │                                        │  (sem ext_authz)
 ```
 
 | # | PEP | Onde aplica | Lab `make up` | Migrar para LiteLLM? |
@@ -74,7 +74,7 @@ ai-agent          Ollama/OpenAI          user-mcp runtime
 | C | Conteúdo via guardrail LiteLLM | `OpaPdpGuardrail` → `opa-gov-api /evaluate` | Código sim; depende de `OPA_GOV_API_URL` | Completar `/mask` |
 | D | Catálogo MCP (quem pode chamar qual tool) | LiteLLM `pdp_mcp.py` (`pre_mcp_call`); catálogo no Vault KV; PDP `mcp.pep` | **Sim** | Já no LiteLLM |
 | E | Who-may-talk-to-whom (mTLS SPIFFE) | Consul Service Intentions | **Sim** | **Não** — PEP de rede |
-| G | Recurso MCP: JWT, scope, LoA/CIBA | LiteLLM `pdp_mcp.py`; user-mcp só executa | **Sim** | Já no LiteLLM |
+| G | Recurso MCP: JWT, scope, LoA | LiteLLM `pdp_mcp.py`; user-mcp só executa | **Sim** | Já no LiteLLM |
 
 Os quatro YAML em `deploy-k8s/service-defaults-agent-*.yaml` todos se chamam `ai-agent`. Só um pode estar aplicado. O caminho minikube **substituiu o hop `web → ai-agent` por `web → LiteLLM → ai-agent`**, mas **não portou as regras Lua**.
 
@@ -242,7 +242,7 @@ Não chama `/mask`. Não inspeciona a resposta do LLM nem o body do pass-through
 - PII mask da **resposta do LLM** no gateway (Transform é no user-mcp, nas leituras SQL).
 - As regras Lua inline do `ai-agent` (não aplicadas pelo `make deploy`).
 
-Catálogo MCP, JWT, scope e CIBA **já** são enforce no LiteLLM (`pdp_mcp.py`).
+Catálogo MCP, JWT, scope e LoA **já** são enforce no LiteLLM (`pdp_mcp.py`).
 
 ---
 
@@ -262,10 +262,11 @@ Regra do lab: `source=default/litellm-gateway`, `dest=default/user-mcp`.
 | `mcp.pep` reason | enforce do PEP |
 | --- | --- |
 | `allow` | `inject_obo_jwt` (LoA 1) |
-| `step-up` | `await_ciba` → `inject_ciba_jwt` (LoA 2) |
-| `insufficient_scope` / `catalog` / `default-deny` | `deny` |
+| `loa2` | `inject_obo_jwt` (JWT já tem `acr=2`) |
+| `step_up_required` | `step_up_login` — nega; web-app redireciona para o step-up OTP do Keycloak |
+| `insufficient_scope` / `catalog` / `tool_disabled` | `deny` |
 
-`ciba_tools` = `{create_user, delete_user_by_email}`. Policies Vault `ciba-*` / `sys/capabilities-self` **não** são o interruptor deste lab.
+`loa2_tools` = `{create_user}`; `disabled_tools` = `{delete_user_by_email}`.
 
 O peer mTLS continua `litellm-gateway → user-mcp`.
 
@@ -312,24 +313,25 @@ Catálogo: Vault KV `opa-policies/mcp-authz/catalog`, hot-reload via vault-agent
 
 ## 7. PEP G — `user-mcp` (runtime no lab; local = legado)
 
-No `make up` o modo é `USER_MCP_PEP_MODE=runtime` + `USER_MCP_DB_AUTH_MODE=vault`. JWT, catálogo, scope e CIBA já saíram no LiteLLM (`pdp_mcp.py`). O processo só:
+No `make up` o modo é `USER_MCP_PEP_MODE=runtime` + `USER_MCP_DB_AUTH_MODE=vault`. JWT, catálogo e scope já saíram no LiteLLM (`pdp_mcp.py`). O processo só:
 
 ```
 JwtAuthMiddleware (decode unverified)  → jwt_identity_bound
-  → tool dispatcher (sem require_scopes / sem CIBA)
+  → tool dispatcher (sem require_scopes)
   → Vault OAuth Resource Server (JWT como X-Vault-Token)
         ACL humana ∩ ceiling do Agent Registry
+        → login jwt-keycloak se LoA 2 exigido (revalida bound_claims.acr)
         → database/creds/{read|write}-role
   → Postgres; lease revogado no finally
   → leituras: Transform mask se groups ∌ admin
 ```
 
-As subsecções 7.1–7.3 abaixo descrevem **`USER_MCP_PEP_MODE=local`** (este processo como PEP). Policies Vault `ciba-*` / `sys/capabilities-self` **não** são o interruptor do lab.
+As subsecções 7.1–7.2 abaixo descrevem **`USER_MCP_PEP_MODE=local`** (este processo como PEP).
 
 Vault **não** chama o MCP de volta. Se `/creds` falhar, o user-mcp devolve 401/403/502.
 
 Código: `user-mcp/auth/jwt_validator.py`, `auth/scope_check.py`, `storage/postgres_repo.py`, `vault_client.py`.
-Policies: `infra/local-minikube/keycloak.sh` (CIBA, Transform, ORS, entities) e `configure.sh` (database roles).
+Policies: `infra/local-minikube/keycloak.sh` (Transform, ORS, entities) e `configure.sh` (database roles).
 
 ### 7.1 JWT no inbound (enforcement local, PDP = Keycloak JWKS)
 
@@ -359,51 +361,20 @@ Falta de scope → **403** `insufficient_scope`. `_select_vault_targets` repete 
 
 Gate extra **antes** do MCP, no broker: `token-exchange/keycloak/authorization.py` (`users.read` → reader\|writer\|admin; `users.write` → writer\|admin). Não é Vault; é PEP do broker.
 
-### 7.3 Interruptor CIBA / LoA — policy Vault, PEP `user-mcp`
+**Step-up (LoA), revalidado no Vault.** Roles JWT (`auth/jwt-keycloak`), usadas antes do passo 7.3:
 
-Fluxo (`postgres_repo._jwt_for_vault` + `vault_client.ciba_required_by_policy`):
+| Role | `bound_claims` |
+| --- | --- |
+| `user-mcp-oidc-read` | `aud=user-mcp`, `groups` ∈ reader\|writer\|admin, `scope` glob `*users.read*` |
+| `user-mcp-oidc-write` | `aud=user-mcp`, `groups` ∈ writer\|admin, `scope` glob `*users.write*`, `acr: "2"` |
 
-1. `POST auth/jwt-keycloak/login` com o OBO e o role `user-mcp-oidc-read` ou `user-mcp-oidc-write` → client token Vault (TTL 300 s, max 900 s). **Só** para o probe.
-2. `POST sys/capabilities-self` path `ciba/<action>/<preferred_username>`.
-3. Interpretação no Python: `read` ∈ caps e `deny` ∉ caps → **CIBA obrigatório**. Caso contrário, OBO silencioso.
-4. Se CIBA: `ciba_client.fetch_access_token` (Keycloak), poll até Approve/Deny/timeout (~110 s). Approve → JWT CIBA vira o `X-Vault-Token` do passo 7.4. Deny/timeout → 403, a tool não toca o Postgres.
-
-Roles JWT (`auth/jwt-keycloak`):
-
-| Role | `bound_claims` | Policy anexada |
-| --- | --- | --- |
-| `user-mcp-oidc-read` | `aud=user-mcp`, `groups` ∈ reader\|writer\|admin, `scope` glob `*users.read*` | `ciba-list-users` |
-| `user-mcp-oidc-write` | `aud=user-mcp`, `groups` ∈ writer\|admin, `scope` glob `*users.write*` | `ciba-write` |
-
-Policy `ciba-list-users` (leituras = OBO silencioso):
-
-| Path | Capability | Efeito no PEP |
-| --- | --- | --- |
-| `ciba/list_all_users/{user,writer,admin}` | `deny` | LoA 1, sem HITL |
-| `ciba/search_users_by_first_name/{user,writer,admin}` | `deny` | LoA 1, sem HITL |
-| `sys/capabilities-self` | `update` | permite o probe |
-
-Policy `ciba-write`:
-
-| Path | Capability | Efeito no PEP |
-| --- | --- | --- |
-| `ciba/create_user/{writer,admin}` | `read` | LoA 2, bloqueia até Approve |
-| `ciba/delete_user_by_email/{writer,admin}` | `read` | LoA 2, bloqueia até Approve |
-| `ciba/update_user_by_email/{writer,admin}` | `deny` | LoA 1, update silencioso |
-| `ciba/sensitive/{writer,admin}` | `read` | **não é probed hoje** — `rar_check.py` não existe; path reservada |
-| `sys/capabilities-self` | `update` | permite o probe |
-
-Não há path `ciba/.../user` em `ciba-write`: o role write nem autentica `groups=reader`. `reader` sem `users.write` já morre no 7.2.
-
-Para desligar HITL em `create_user`: `vault policy write ciba-write` com `deny` nessa path; o próximo login JWT pega a policy nova.
+O login em `user-mcp-oidc-write` só sucede se o JWT tiver `acr=2` (step-up OTP já feito no Keycloak) — é o Vault validando de novo, independente do que o PEP no LiteLLM já decidiu.
 
 Log `event=pdp_decision`: `STEP_UP_REQUIRED` / `ALLOW` LoA 2 / `DENY` / `EXPIRED`. ALLOW LoA 1 (leitura) **não** emite essa linha de propósito.
 
-Scope pedido no CIBA: writes → `openid users.write`; resto → `openid users.read`. Binding message = nome da tool. Canal humano: `ciba-channel` `:8082`.
+### 7.3 Credencial Postgres — policy Vault + OAuth Resource Server, PEP pede e recusa
 
-### 7.4 Credencial Postgres — policy Vault + OAuth Resource Server, PEP pede e recusa
-
-Depois do CIBA (ou OBO silencioso) o user-mcp **não** usa o client token do jwt-keycloak no banco. Apresenta o JWT Keycloak (OBO ou CIBA) como `X-Vault-Token` em:
+O user-mcp **não** usa o client token do jwt-keycloak no banco. Apresenta o JWT Keycloak (OBO) como `X-Vault-Token` em:
 
 - `GET database/creds/user-mcp-read-role` ou `…/user-mcp-write-role`
 - `POST transform/encode/user-mcp-transform`
@@ -442,7 +413,7 @@ SQL que o Vault aplica (TTL 1 h, max 24 h):
 
 403/400 do Vault → user-mcp responde **403** `invalid_request`. Sem JWT no context → **401**. Falha de transporte → **502**. Lease revogado no `finally`.
 
-### 7.5 PII por grupo — Transform no Vault, quem chama é o user-mcp
+### 7.4 PII por grupo — Transform no Vault, quem chama é o user-mcp
 
 Só nas **leituras** (`list_all`, `search_by_first_name`). Writes não mascaram.
 
@@ -462,9 +433,9 @@ Só nas **leituras** (`list_all`, `search_by_first_name`). Writes não mascaram.
 
 Masking one-way, carácter `*`. Independente do mask regex OPA da §3.3 (esse é no body do agente; este é no record MCP).
 
-### 7.6 Alvo: PEP G sobe para o LiteLLM; Vault continua PDP
+### 7.5 Alvo: PEP G sobe para o LiteLLM; Vault continua PDP
 
-Implementado nesta fatia: LiteLLM `pdp_mcp.py` (`mode: pre_mcp_call`) valida JWT, pergunta `POST /v1/data/mcp/pep/decision` no **opa-server** (catálogo + scope + CIBA) e faz poll Keycloak se `ciba_required`. user-mcp com `USER_MCP_PEP_MODE=runtime` só executa SQL e pede `database/creds` / Transform com o JWT que o gateway já autorizou. `ext_authz` no inbound de user-mcp foi removido.
+Implementado nesta fatia: LiteLLM `pdp_mcp.py` (`mode: pre_mcp_call`) valida JWT, pergunta `POST /v1/data/mcp/pep/decision` no **opa-server** (catálogo + scope + LoA) e nega com `step_up_required` se `loa < required_loa`. user-mcp com `USER_MCP_PEP_MODE=runtime` só executa SQL e pede `database/creds` / Transform com o JWT que o gateway já autorizou. `ext_authz` no inbound de user-mcp foi removido.
 
 ---
 
@@ -486,8 +457,7 @@ App (`deploy-k8s/service-intentions.yaml`):
 | `opa-service` (ns `opa`) | `ai-agent`, `opa-gov-api` |
 | `opa-mcp-authz` | `user-mcp` |
 | `web` | `web-api-gateway` |
-| `keycloak` | gateway, `token-exchange`, `user-mcp`, `litellm-gateway`, `web`, `ciba-channel` |
-| `ciba-channel` | `keycloak`, `ciba-channel-gateway` |
+| `keycloak` | gateway, `token-exchange`, `user-mcp`, `litellm-gateway`, `web` |
 
 Infra (`infra/local-minikube/mesh-vault-postgres.yaml`):
 
@@ -504,12 +474,12 @@ Token-exchange (PEP do broker, policies hardcoded, não Vault): ver §7.2.
 
 ## 9. Checklist de migração (Consul API GW → LiteLLM PEP → Vault PDP)
 
-Objetivo: Consul permanece na borda; LiteLLM é o PEP de IA; **OPA `mcp.pep`** é o PDP de tools/call; Vault fica com segredos; user-mcp perde JWT/scope/CIBA/ext_authz no modo runtime.
+Objetivo: Consul permanece na borda; LiteLLM é o PEP de IA; **OPA `mcp.pep`** é o PDP de tools/call; Vault fica com segredos; user-mcp perde JWT/scope/ext_authz no modo runtime.
 
 1. **Borda** — Consul API Gateway já é o norte-sul; não mudar o papel.
 2. **Conteúdo no LiteLLM** — `OPA_GOV_API_URL` + deploy `opa-gov-api` (bundle no Vault); portar `/mask`. Fail-closed.
 3. **Catálogo no LiteLLM** — feito (`pdp_mcp.py` lê `opa-policies/mcp-authz/catalog`; `ext_authz` desligado).
-4. **LoA/CIBA no LiteLLM** — feito (OPA `mcp.pep` + poll Keycloak; JWT CIBA no runtime).
+4. **LoA no LiteLLM** — feito (OPA `mcp.pep` decide a partir do `acr`; nega com `step_up_required` até o Keycloak step-up).
 5. **JWT + tool→scope no LiteLLM** — feito (`USER_MCP_PEP_MODE=runtime`).
 6. **Não mover para o LiteLLM** — Service Intentions, `database/creds` mint, Transform encode, token-exchange OBO no ai-agent.
 7. **Desligar legado A** — nenhum `service-defaults-agent-*.yaml`.

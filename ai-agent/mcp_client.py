@@ -60,7 +60,7 @@ def mcp_request_headers(
     When USER_MCP_URL points at LiteLLM's MCP gateway, LiteLLM identifies
     this caller by its mesh identity, so no credential is added for it.
     Authorization stays the OBO so LiteLLM's extra_headers can forward it to
-    user-mcp for JWT / CIBA. Discovery sends no Authorization.
+    user-mcp for JWT validation. Discovery sends no Authorization.
     """
     headers: dict[str, str] = {"X-Request-ID": request_id}
     if obo_token:
@@ -232,9 +232,9 @@ async def invoke_mcp_tool(
     travels with its own narrowly-scoped OBO.
 
     *timeout_seconds* must exceed however long the slowest tool on the
-    other end can legitimately block — e.g. create_user's CIBA poll wait —
-    or this call gets cut off before user-mcp responds. The library default
-    is 30s, which is too short for that tool.
+    other end can legitimately take (SQL/Vault round-trips under a slow
+    local LLM) or this call gets cut off before user-mcp responds. The
+    library default is 30s, which can be too short.
 
     Talks to the raw MCP ClientSession instead of going through
     langchain_mcp_adapters' StructuredTool wrapper (as this used to, via

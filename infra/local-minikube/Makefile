@@ -47,8 +47,8 @@ keycloak:
 # publishes amd64 builds for, plus token-exchange (its Docker Hub image is
 # fine arch-wise, but this repo's local source is the one under active
 # development and routinely drifts ahead of it - see the "keycloak wip"
-# groups-claim rename in token-exchange/keycloak/authorization.py) and the
-# local-only ciba-channel image, and loads them into the node. See README.md.
+# groups-claim rename in token-exchange/keycloak/authorization.py), and
+# loads them into the node. See README.md.
 images:
 	[ -f $(REPO_ROOT)/user-mcp/users_repository.json ] || \
 		cp $(REPO_ROOT)/infra/modules/minikube-resources-config/users_seed.json \
@@ -57,13 +57,11 @@ images:
 	docker build --load -t agentguard-ai-agent:local $(REPO_ROOT)/ai-agent
 	docker build --load -t agentguard-web-app:local $(REPO_ROOT)/web-app
 	docker build --load -t agentguard-token-exchange:local $(REPO_ROOT)/token-exchange
-	docker build --load -t ciba-channel:local $(REPO_ROOT)/ciba-channel
 	docker build --load -t agentguard-opa-gov-api:local $(REPO_ROOT)/opa-gov-api
 	minikube -p $(PROFILE) image load agentguard-user-mcp:local
 	minikube -p $(PROFILE) image load agentguard-ai-agent:local
 	minikube -p $(PROFILE) image load agentguard-web-app:local
 	minikube -p $(PROFILE) image load agentguard-token-exchange:local
-	minikube -p $(PROFILE) image load ciba-channel:local
 	minikube -p $(PROFILE) image load agentguard-opa-gov-api:local
 
 deploy:
@@ -89,7 +87,6 @@ deploy:
 	[ -f generated/litellm_sso_state ] || openssl rand -hex 24 > generated/litellm_sso_state
 	[ -f generated/keycloak_client_secret_litellm ] || { echo "missing generated/keycloak_client_secret_litellm (run make keycloak)"; exit 1; }
 	[ -f generated/litellm_db_password ] || { echo "missing generated/litellm_db_password (run make keycloak)"; exit 1; }
-	[ -f generated/keycloak_client_secret_ciba ] || { echo "missing generated/keycloak_client_secret_ciba (run make keycloak)"; exit 1; }
 	[ -f generated/keycloak_client_secret_user_mcp ] || { echo "missing generated/keycloak_client_secret_user_mcp (run make keycloak)"; exit 1; }
 	$(KC) create secret generic litellm-gateway-env \
 	  --from-literal=LITELLM_MASTER_KEY=$$(cat generated/litellm_master_key) \
@@ -100,12 +97,6 @@ deploy:
 	  --from-literal=DATABASE_URL=postgresql://litellm_user:$$(cat generated/litellm_db_password)@postgres.default.svc.cluster.local:5432/litellm \
 	  --from-literal=PEP_OPA_URL=http://opa-service.opa.svc.cluster.local \
 	  --from-literal=PEP_OPA_DECISION_PATH=/v1/data/mcp/pep/decision \
-	  --from-literal=PEP_CIBA_KEYCLOAK_URL=http://keycloak.virtual.consul \
-	  --from-literal=PEP_CIBA_REALM=demo \
-	  --from-literal=PEP_CIBA_CLIENT_ID=ciba-client \
-	  --from-literal=PEP_CIBA_CLIENT_SECRET=$$(cat generated/keycloak_client_secret_ciba) \
-	  --from-literal=PEP_CIBA_POLL_TIMEOUT_SECONDS=110 \
-	  --from-literal=PEP_CIBA_APPROVE_URL=http://localhost:8093 \
 	  --from-literal=PEP_MCP_SOURCE=default/litellm-gateway \
 	  --from-literal=PEP_MCP_DEST=default/user-mcp \
 	  --from-literal=PEP_MCP_AUDIENCE=user-mcp \
@@ -135,9 +126,6 @@ deploy:
 	$(KC) create secret generic ai-agent-env --from-file=.env=$(DEPLOY_DIR)/ai-agent.env --dry-run=client -o yaml | $(KC) apply -f -
 	$(KC) apply -f $(DEPLOY_DIR)/ai-agent.yaml
 	$(KC) apply -f $(DEPLOY_DIR)/ai-agent-config.yaml
-	$(KC) apply -f $(DEPLOY_DIR)/ciba-channel.yaml
-	$(KC) apply -f $(DEPLOY_DIR)/service-defaults-ciba-channel.yaml
-	$(KC) apply -f $(DEPLOY_DIR)/ciba-channel-gateway.yaml
 	# Catalog is now enforced by LiteLLM (pdp_mcp.py). opa-mcp-authz stays
 	# deployed so consul-mcp-authz can still manage the Vault KV catalog.
 	$(KC) create configmap opa-mcp-authz-policy \
@@ -166,14 +154,13 @@ deploy:
 	$(KC) patch deployment opa-gov-api -n default --type=json -p='[{"op":"replace","path":"/spec/template/spec/containers/0/imagePullPolicy","value":"Never"}]'
 	# Consul creates each *-api-gateway Service asynchronously; patching NodePort
 	# before it exists would create a ClusterIP Service that rejects nodePort.
-	@for svc in web-api-gateway ciba-channel-gateway litellm-api-gateway; do \
+	@for svc in web-api-gateway litellm-api-gateway; do \
 	  for i in $$(seq 1 60); do \
 	    $(KC) get svc $$svc >/dev/null 2>&1 && break; \
 	    sleep 2; \
 	  done; \
 	done
 	$(KC) apply -f web-nodeport.yaml
-	$(KC) apply -f ciba-channel-nodeport.yaml
 	$(KC) apply -f litellm-gateway-nodeport.yaml
 	# Host :4000 is published at minikube create (--ports 4000:30083). Probe
 	# TCP listen, not /health: LiteLLM is often still starting here, and a
@@ -201,7 +188,6 @@ verify:
 	@echo "--- direct access (no port-forward) ---"
 	curl -s -o /dev/null -w "web      (localhost:8080): HTTP %{http_code}\n" http://localhost:8080/
 	curl -s -o /dev/null -w "keycloak (localhost:8081): HTTP %{http_code}\n" http://localhost:8081/realms/demo/.well-known/openid-configuration
-	curl -s -o /dev/null -w "ciba     (localhost:8082): HTTP %{http_code}\n" http://localhost:8082/
 	curl -s -o /dev/null -w "litellm  (localhost:4000): HTTP %{http_code}\n" http://localhost:4000/ui
 	curl -sk -o /dev/null -w "vault    (localhost:8200): HTTP %{http_code}\n" https://localhost:8200/v1/sys/health
 	curl -sk -o /dev/null -w "consul   (localhost:8501): HTTP %{http_code}\n" https://localhost:8501/v1/status/leader

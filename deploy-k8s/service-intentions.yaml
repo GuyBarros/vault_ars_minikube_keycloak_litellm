@@ -150,7 +150,7 @@ spec:
     - name: keycloak-api-gateway
       action: allow
       namespace: default
-    # Server-side OBO/CIBA token exchange and JWKS/discovery fetches.
+    # Server-side OBO token exchange and JWKS/discovery fetches.
     - name: token-exchange
       action: allow
       namespace: default
@@ -164,31 +164,5 @@ spec:
     # web-app's own server-side OIDC code<->token exchange and id_token JWKS
     # verification talk to Keycloak directly (not via token-exchange).
     - name: web
-      action: allow
-      namespace: default
-    # The CIBA approve/deny callback (ext/ciba/auth/callback).
-    - name: ciba-channel
-      action: allow
-      namespace: default
----
-apiVersion: consul.hashicorp.com/v1alpha1
-kind: ServiceIntentions
-metadata:
-  name: ciba-channel
-  namespace: default
-spec:
-  destination:
-    name: ciba-channel
-    namespace: default
-  sources:
-    # Keycloak's CIBA HTTP Authentication Channel SPI posts each pending
-    # backchannel request here (see deploy-k8s/keycloak.yaml's
-    # --spi-ciba-auth-channel-* startup flag).
-    - name: keycloak
-      action: allow
-      namespace: default
-    # Human approval page - see ciba-channel-gateway.yaml's own comment for
-    # why browsers must go through the gateway instead of ciba-channel directly.
-    - name: ciba-channel-gateway
       action: allow
       namespace: default

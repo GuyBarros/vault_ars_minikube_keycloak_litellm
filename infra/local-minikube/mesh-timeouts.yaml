@@ -28,19 +28,13 @@
 #
 # Kept separate from deploy-k8s/*.yaml so the AWS flow is unaffected.
 #
-# Below that: user-mcp's timeout is for a DIFFERENT reason, unrelated to
-# local LLM speed — writes gated by CIBA block the whole call chain
-# (ai-agent -> user-mcp -> Keycloak) for however long the human takes to
-# approve/deny on their device, up to a bounded poll deadline
-# (USER_MCP_CIBA_POLL_TIMEOUT_SECONDS, ~110s). ServiceResolver.requestTimeout
-# is what governs each hop. token-exchange keeps the same generous timeout as
-# harmless margin, though it no longer sits on that blocking path itself —
-# CIBA now runs entirely inside user-mcp against Keycloak directly.
+# user-mcp and token-exchange keep the same generous timeout as the rest of
+# the chain: ServiceResolver.requestTimeout is what governs each hop, and
+# margin here is harmless given the LLM-speed reasoning above.
 #
 # user-mcp's ServiceDefaults (protocol + localRequestTimeoutMs) lives in
 # deploy-k8s/service-defaults-user-mcp.yaml, NOT here — keep a single
 # ServiceDefaults/user-mcp so kubectl apply cannot strip fields.
-# CIBA now blocks on LiteLLM, not on this inbound hop.
 apiVersion: consul.hashicorp.com/v1alpha1
 kind: ServiceResolver
 metadata:

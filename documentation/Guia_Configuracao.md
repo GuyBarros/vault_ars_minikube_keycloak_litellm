@@ -18,7 +18,7 @@ Arquitetura (pastas, tools, scripts): [`arquitetura-detalhada.md`](./arquitetura
 | Licença Consul Enterprise | `infra/config/consul_license.hclic` |
 | Licença Vault Enterprise **com Agentic IAM** | `infra/config/vault_license.hclic` |
 
-Sem a entitlement Agentic IAM, `sys/config/oauth-resource-server` falha e o Vault não aceita o JWT OBO/CIBA como `X-Vault-Token` em `database/creds`.
+Sem a entitlement Agentic IAM, `sys/config/oauth-resource-server` falha e o Vault não aceita o JWT OBO como `X-Vault-Token` em `database/creds`.
 
 As configurações locais de versão, Postgres e claims OIDC ficam em `infra/local-minikube/local-config.sh` e são carregadas pelos scripts do minikube.
 
@@ -36,7 +36,7 @@ make down     # apaga o profile minikube (tudo)
 
 Estágios isolados: `make bootstrap`, `make configure`, `make keycloak`, `make images`, `make deploy`.
 
-`make keycloak` gera os client secrets, importa o realm `demo` e **escreve** os secrets em `deploy-k8s/token-exchange.env`, `user-mcp.env` e `web-app.env`. Não edite esses valores à mão se for reexecutar o script.
+`make keycloak` gera os client secrets, importa o realm `demo` e **escreve** os secrets em `deploy-k8s/token-exchange.env` e `web-app.env`. Não edite esses valores à mão se for reexecutar o script.
 
 ---
 
@@ -46,7 +46,6 @@ Estágios isolados: `make bootstrap`, `make configure`, `make keycloak`, `make i
 | --- | --- | --- |
 | Canal (web-app) | http://localhost:8080 | browser — **só** via Consul API Gateway (`web-api-gateway`) |
 | Keycloak (IdP) | http://localhost:8081 | browser + discovery OIDC |
-| Canal CIBA | http://localhost:8082 | Approve / Deny de `create_user` / `delete_user_by_email` |
 | LiteLLM admin | http://localhost:4000/ui | browser — via Consul API Gateway (`litellm-api-gateway`). SSO with the Keycloak demo logins below, or password `admin`/`admin` |
 | Hop viewer | http://127.0.0.1:8753/ | `make hop-logs` — hops / timeline / auditoria em SSE |
 | Vault | https://localhost:8200 | CLI (`curl -sk`) |
@@ -57,8 +56,8 @@ Logins do realm `demo`:
 | Usuário | Senha | Grupos | O que pode |
 | --- | --- | --- | --- |
 | `user` | `user` | `reader` | `users.read` (list/search). Sem `users.write`. PII mascarado. |
-| `writer` | `writer` | `writer` | `users.read` + `users.write`. Create/delete exigem CIBA. PII mascarado. |
-| `admin` | `admin` | `admin` | leitura + escrita, PII em claro. Create/delete exigem CIBA. |
+| `writer` | `writer` | `writer` | `users.read` + `users.write`. `create_user` exige step-up (LoA 2). PII mascarado. |
+| `admin` | `admin` | `admin` | leitura + escrita, PII em claro. `create_user` exige step-up (LoA 2). |
 
 Admin do Keycloak (console): `admin` + senha em `infra/local-minikube/generated/keycloak_admin_password`.
 
@@ -77,11 +76,11 @@ Admin do Keycloak (console): `admin` + senha em `infra/local-minikube/generated/
 | Env dos apps | `deploy-k8s/{web-app,ai-agent,user-mcp,token-exchange}.env` | Secret Kubernetes (`*-env`) |
 | Rotas LLM | `litellm-gateway/config.yaml` | ConfigMap `litellm-gateway-config` |
 | Intentions (PEP de rede) | `deploy-k8s/service-intentions.yaml` | `make deploy` |
-| Timeouts CIBA na malha | `infra/local-minikube/mesh-timeouts.yaml` | aplicado **depois** do HTTPRoute do web |
+| Timeouts da malha | `infra/local-minikube/mesh-timeouts.yaml` | aplicado **depois** do HTTPRoute do web |
 | Identidade do chamador no LiteLLM | extensão `builtin/lua` no `ServiceDefaults` `litellm-gateway` (`mesh-timeouts.yaml`) | `make deploy` |
 | Vault e Postgres na malha | `infra/local-minikube/mesh-vault-postgres.yaml` + `deploy-k8s/mesh.yaml` | `configure.sh` (passo 1b) |
 | CA da malha (Connect) | Vault PKI `connect_root` / `connect_inter`; config via `consul connect ca set-config` | `configure.sh` (passo 8) |
-| LoA / HITL | `ciba_tools` em `mcp_pep.rego` (lab); policies Vault `ciba-*` só no modo local do user-mcp | `keycloak.sh` + bundle OPA |
+| LoA (step-up) | `loa2_tools` em `mcp_pep.rego`; validado de novo no Vault via `bound_claims.acr` no role `user-mcp-oidc-write` | `keycloak.sh` + bundle OPA |
 | Catálogo MCP (agente → tool) | Vault KV `opa-policies/mcp-authz/catalog` | `configure.sh` + `opa-mcp-authz` |
 
 Não commitar `*.env`. Depois de mudar um `.env`:
@@ -104,8 +103,7 @@ Clients do realm `demo`:
 | --- | --- |
 | `web` | Authorization Code + PKCE (browser) |
 | `token-exchange` | RFC 8693 OBO (confidential) |
-| `ciba-client` | LiteLLM dispara CIBA quando `mcp.pep` devolve `ciba_required` |
-| `user-mcp` | audience dos tokens OBO/CIBA |
+| `user-mcp` | audience dos tokens OBO |
 
 O mapper SPI `keycloak-providers/` (imagem custom) é obrigatório: remove `typ` do payload, injeta `act` a partir do actor token Vault e sintetiza `authorization_details` (RAR) a partir de `users.read` / `users.write`. Sem isso o OAuth Resource Server do Vault recusa o JWT.
 
@@ -113,17 +111,17 @@ O mapper SPI `keycloak-providers/` (imagem custom) é obrigatório: remove `typ`
 
 ---
 
-## 6. OPA — interruptor CIBA (LoA)
+## 6. OPA — interruptor de step-up (LoA)
 
-O LoA **não** vem como claim `acr`/`loa` do IdP. O PEP em `litellm-gateway/pdp_mcp.py` pergunta ao opa-server (`mcp.pep`) e calcula:
+O PEP em `litellm-gateway/pdp_mcp.py` pergunta ao opa-server (`mcp.pep`) e calcula o LoA a partir do `acr` que o Keycloak escreveu no token (2 só depois de um login com OTP):
 
 - **LoA 1** — OBO silencioso (leitura / update)
-- **LoA 2** — JWT CIBA depois do Approve
+- **LoA 2** — token com `acr=2` (step-up OTP já feito)
 - **Não há LoA 3** — só existe um mecanismo de elevação
 
-O switch é o set `ciba_tools` em `infra/config/opa_policies/mcp_pep.rego` (hoje `create_user` e `delete_user_by_email`). Catálogo e scopes também saem desse documento. Para desligar HITL em `create_user`, tire a tool de `ciba_tools` e faça `vault kv put opa-policies/bundle ...`.
+O switch é o set `loa2_tools` em `infra/config/opa_policies/mcp_pep.rego` (hoje só `create_user`; `delete_user_by_email` está em `disabled_tools`). Catálogo e scopes também saem desse documento. O user-mcp valida o step-up de novo, sem confiar só no header do PEP: o role Vault `user-mcp-oidc-write` só aceita login se o JWT tiver `acr: "2"` (ver §8). Para desligar o step-up em `create_user`, tire a tool de `loa2_tools` e faça `vault kv put opa-policies/bundle ...`.
 
-TTL do token Vault de probe CIBA no Keycloak é independente. Credenciais Postgres dinâmicas continuam no Vault: roles `user-mcp-read-role` / `user-mcp-write-role` (TTL 1 h).
+Credenciais Postgres dinâmicas continuam no Vault: roles `user-mcp-read-role` / `user-mcp-write-role` (TTL 1 h).
 
 ---
 
@@ -143,9 +141,9 @@ O PEP de *IA* é o LiteLLM (`litellm-gateway`): web → LiteLLM → ai-agent, e 
 | `vault` (ns `vault`), `keycloak`, `user-mcp`, `litellm-gateway` | `postgres` |
 | `ai-agent`, `user-mcp`, `consul-mcp-authz`, `opa-service`, `opa-mcp-authz` | `vault` (ns `vault`) |
 
-`ext_authz` no inbound de `user-mcp` foi **desligado**. O catálogo MCP (`opa-policies/mcp-authz/catalog`) e o interruptor CIBA vivem no **opa-server** (`mcp.pep`); o LiteLLM (`pdp_mcp.py`, hook `pre_mcp_call`) consulta `POST /v1/data/mcp/pep/decision`. O peer mTLS continua `litellm-gateway → user-mcp`; a regra do catálogo é `default/litellm-gateway → default/user-mcp`.
+`ext_authz` no inbound de `user-mcp` foi **desligado**. O catálogo MCP (`opa-policies/mcp-authz/catalog`) e o interruptor de LoA vivem no **opa-server** (`mcp.pep`); o LiteLLM (`pdp_mcp.py`, hook `pre_mcp_call`) consulta `POST /v1/data/mcp/pep/decision`. O peer mTLS continua `litellm-gateway → user-mcp`; a regra do catálogo é `default/litellm-gateway → default/user-mcp`.
 
-O PDP de admissão do gateway é `litellm-gateway/pdp_auth.py`: `ai-agent` e `web` são admitidos pela identidade mTLS da malha (SPIFFE), sem chave compartilhada. O PDP de conteúdo (prompt injection) é o guardrail `OpaPdpGuardrail` contra `opa-gov-api` quando `OPA_GOV_API_URL` está setado; senão o guardrail permite. LoA/CIBA de **tools/call** está no LiteLLM: a decisão vem do opa-server; o poll Keycloak e a injeção do JWT CIBA ficam no PEP.
+O PDP de admissão do gateway é `litellm-gateway/pdp_auth.py`: `ai-agent` e `web` são admitidos pela identidade mTLS da malha (SPIFFE), sem chave compartilhada. O PDP de conteúdo (prompt injection) é o guardrail `OpaPdpGuardrail` contra `opa-gov-api` quando `OPA_GOV_API_URL` está setado; senão o guardrail permite. LoA de **tools/call** está no LiteLLM: a decisão vem do opa-server a partir do `acr` do JWT.
 
 No laboratório local o `make deploy` sobe o PDP OPA inteiro: namespace `opa`, `opa-server` (Service `opa-service`, políticas do Vault KV `opa-policies/bundle` + catálogo `opa-policies/mcp-authz/catalog` via Vault Agent) e `opa-gov-api` (imagem `agentguard-opa-gov-api:local`, construída no `make images` porque a do Docker Hub é só amd64), e seta `OPA_GOV_API_URL=http://opa-gov-api.virtual.consul:8000` e `PEP_OPA_URL=http://opa-service.opa.svc.cluster.local` no `litellm-gateway`. O `OPA_GOV_API_URL` fica no Makefile e não no `litellm-gateway.yaml` porque esse manifest é compartilhado e o guardrail é fail-closed: com a variável setada e o OPA fora do ar, todo prompt é negado. O `opa-gov-api` sobe com `OPA_FAIL_MODE=open` (falha de OPA = permite); mude para `closed` se quiser um gate de verdade.
 
@@ -211,7 +209,7 @@ Valores típicos do minikube local. Secrets: deixe o `keycloak.sh` preencher.
 | `USER_MCP_URL` | `http://litellm-gateway.virtual.consul:4000/user_mcp/mcp` | MCP nativo no LiteLLM → user-mcp; o `ai-agent.yaml` já injeta isso |
 | `ACTOR_TOKEN_PATH` | `/vault/secrets/actor-token` | Vault Agent inject |
 | `OBO_ROLE_NAME` | `agent-runtime` | |
-| `MCP_TOOL_CALL_TIMEOUT_SECONDS` | `120` | **≥** `PEP_CIBA_POLL_TIMEOUT_SECONDS` (110) no LiteLLM |
+| `MCP_TOOL_CALL_TIMEOUT_SECONDS` | `120` | margem para SQL/Vault sob LLM local lento |
 | `BYPASS_AUTH_TOKEN_EXCHANGE` | `false` | `true` só em dev sem Keycloak |
 
 ### user-mcp (`deploy-k8s/user-mcp.env`)
@@ -223,20 +221,14 @@ Valores típicos do minikube local. Secrets: deixe o `keycloak.sh` preencher.
 | `USER_MCP_DB_AUTH_MODE` | `vault` | `direct` usa `USER_MCP_DB_USER` / `PASSWORD` |
 | `USER_MCP_VAULT_ADDR` | `https://vault.vault.svc:8200` | DNS in-cluster, não o ALB |
 | `USER_MCP_VAULT_VERIFY_TLS` | `false` no lab (CA self-signed) | |
-| `USER_MCP_VAULT_JWT_PATH` | `jwt-keycloak` | só em `USER_MCP_PEP_MODE=local` (probe CIBA) |
+| `USER_MCP_VAULT_JWT_PATH` | `jwt-keycloak` | login que valida o step-up (`bound_claims.acr`) |
 | `USER_MCP_VAULT_JWT_READ_ROLE` | `user-mcp-oidc-read` | |
 | `USER_MCP_VAULT_JWT_WRITE_ROLE` | `user-mcp-oidc-write` | |
 | `USER_MCP_KEYCLOAK_BASE_URL` | `http://keycloak.virtual.consul/realms/demo` | issuer |
 | `USER_MCP_AUDIENCE` | `user-mcp` | |
 | `USER_MCP_ALLOW_UNAUTH_DISCOVERY` | `true` | `tools/list` sem Bearer |
-| `USER_MCP_PEP_MODE` | `runtime` | LiteLLM é o PEP; user-mcp não valida JWKS/scope/CIBA |
+| `USER_MCP_PEP_MODE` | `runtime` | LiteLLM é o PEP; user-mcp não valida JWKS/scope |
 | `USER_MCP_BYPASS_AUTH` | `false` | **incompatível** com `DB_AUTH_MODE=vault` |
-| `USER_MCP_CIBA_KEYCLOAK_URL` | `http://keycloak.virtual.consul` | |
-| `USER_MCP_CIBA_REALM` | `demo` | |
-| `USER_MCP_CIBA_CLIENT_ID` | `ciba-client` | |
-| `USER_MCP_CIBA_CLIENT_SECRET` | *(gerado)* | |
-| `USER_MCP_CIBA_POLL_TIMEOUT_SECONDS` | `110` | |
-| `USER_MCP_CIBA_APPROVE_URL` | `http://ciba-channel.virtual.consul:8093` | |
 
 ### token-exchange (`deploy-k8s/token-exchange.env`)
 
@@ -253,13 +245,6 @@ Prefixo `IDENTITY_BROKER_`.
 | `IDENTITY_BROKER_VAULT_TLS_VERIFY` | `false` no lab |
 
 Autorização OBO **antes** do Keycloak (`token-exchange/keycloak/authorization.py`): `users.read` → grupos `user` ou `admin`; `users.write` → só `admin`. 403 se o subject não tiver o grupo.
-
-### ciba-channel
-
-| Variável | Default |
-| --- | --- |
-| `CIBA_CHANNEL_HOST` / `PORT` | `0.0.0.0` / `8093` |
-| `CIBA_CALLBACK_URL` | `http://keycloak.virtual.consul/realms/demo/protocol/openid-connect/ext/ciba/auth/callback` |
 
 ---
 
@@ -308,18 +293,17 @@ O comment no `config.yaml` explica por que a rota Ollama usa o provider `openai/
 
 ---
 
-## 10. Timeouts (CIBA)
+## 10. Timeouts
 
-A tool `create_user` **bloqueia** até o Approve. Toda a cadeia precisa caber ~110 s:
+Margem generosa em toda a cadeia por causa do LLM local, não de uma espera por aprovação humana:
 
 | Camada | Onde | Valor típico |
 | --- | --- | --- |
-| Poll CIBA | `PEP_CIBA_POLL_TIMEOUT_SECONDS` no LiteLLM (`make deploy`) | 110 |
 | Cliente MCP do agente | `MCP_TOOL_CALL_TIMEOUT_SECONDS` | 120 |
 | Cliente MCP do LiteLLM | `LITELLM_MCP_CLIENT_TIMEOUT` | 150 |
-| Malha Consul | `infra/local-minikube/mesh-timeouts.yaml` | `requestTimeout` acima do poll |
+| Malha Consul | `infra/local-minikube/mesh-timeouts.yaml` | `requestTimeout` generoso |
 
-Se o agente devolver timeout e o CIBA ainda estiver `pending`, o poll do MCP é menor que o timeout do LangChain, ou o HTTPRoute do web não recebeu o `RouteTimeoutFilter` (o `make deploy` aplica `mesh-timeouts.yaml` por último de propósito).
+Se o agente devolver timeout, o poll do MCP é menor que o timeout do LangChain, ou o HTTPRoute do web não recebeu o `RouteTimeoutFilter` (o `make deploy` aplica `mesh-timeouts.yaml` por último de propósito).
 
 ---
 
@@ -331,7 +315,6 @@ Se o agente devolver timeout e o CIBA ainda estiver `pending`, o poll do MCP é 
 | `KEYCLOAK_BASE_URL` = DNS in-cluster | login redireciona para um host que o browser não resolve |
 | `USER_MCP_VAULT_ADDR` / `USER_MCP_PG_URL` apontando para ALB/host | `ConnectError` / `Name or service not known` de dentro do pod |
 | Catálogo MCP ainda com `default/ai-agent` | 403 em `tools/call` (`x-authz-reason` aponta `agent=default/litellm-gateway`) |
-| `MCP_TOOL_CALL_TIMEOUT_SECONDS` < poll CIBA | create/delete aborta com o pedido ainda no canal `:8082` |
 | Licença Vault sem Agentic IAM | 403 em `database/creds` mesmo com JWT válido |
 | `kubectl exec vault-0` / `postgres-0` sem `-c` | `exec: "sh": executable file not found` (cai no `consul-dataplane`) |
 | Vault reiniciado e ainda selado | sem novos certificados de folha na malha (o Vault é a CA) até o unseal |
@@ -358,7 +341,7 @@ VAULT_ADDR=https://localhost:8200 VAULT_SKIP_VERIFY=1 VAULT_TOKEN=$(cat generate
 consul connect ca get-config | jq -r .Provider   # vault (com CONSUL_HTTP_ADDR/TOKEN apontando para o Consul)
 ```
 
-Fluxo funcional: login `admin`/`admin` em `:8080` → “List all users.” (LoA 1, sem CIBA) → create user (pedido em `:8082`) → Approve → inspector **LoA 2 ALLOW** em `create_user`.
+Fluxo funcional: login `admin`/`admin` em `:8080` → “List all users.” (LoA 1) → create user → web-app redireciona para o step-up OTP do Keycloak (`web-app/src/lib/auth/step-up.ts`) → depois do OTP, retry automático → inspector **LoA 2 ALLOW** em `create_user`.
 
 ---
 

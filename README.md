@@ -43,7 +43,7 @@ At a platform level:
 3. HashiCorp Vault converts that platform-native identity into an OIDC-conformant identity token for the workload, giving the agent a unique non-human identity without application code changes.
 4. The token-exchange service uses the user token and the Vault-issued workload identity token to obtain delegated credentials for downstream access.
 5. HashiCorp Consul is the API Gateway (norte-sul) and the mTLS/SPIFFE mesh (leste-oeste). In the local minikube flow, Vault is the mesh's certificate authority (Connect CA), and Vault and Postgres are themselves mesh services.
-6. **LiteLLM** is the PEP + AI Gateway (SPIFFE admission, MCP `tools/call`, optional content guardrail). **OPA `opa-server` (`mcp.pep`)** is the PDP for catalog, scope, and CIBA. Vault stores the OPA bundle and MCP catalog and issues secrets (`database/creds`, Transform, actor token). The Lua filter on `ai-agent` is **not** applied by `make deploy`.
+6. **LiteLLM** is the PEP + AI Gateway (SPIFFE admission, MCP `tools/call`, optional content guardrail). **OPA `opa-server` (`mcp.pep`)** is the PDP for catalog and scope. Vault stores the OPA bundle and MCP catalog and issues secrets (`database/creds`, Transform, actor token). The Lua filter on `ai-agent` is **not** applied by `make deploy`.
 
 ### Runtime controls enforced by the platform
 
@@ -51,7 +51,7 @@ Consul (rede), LiteLLM+OPA (IA), and Vault (segredos) enforce runtime controls w
 
 - admit only mesh identities (`default/web`, `default/ai-agent`) at the AI gateway
 - allow or deny MCP tools from the Vault KV catalog and `users.read` / `users.write` scopes
-- step-up with Keycloak CIBA for `create_user` and `delete_user_by_email`
+- require a Keycloak MFA step-up (LoA) for `create_user`, validated by Vault on the write path
 - mint per-request Postgres credentials and mask PII on reads (Transform) unless the caller is `admin`
 - optionally block prompt injection via the LiteLLM content guardrail → `opa-gov-api`
 
@@ -71,11 +71,10 @@ The main repo components are:
 | --- | --- |
 | [`web-app/`](./web-app/) | Next.js 15 (App Router) + React 19 + TypeScript UI styled with the IBM Carbon Design System; handles Keycloak OAuth login, streaming AI chat, and the subject / actor / OBO token inspector |
 | [`ai-agent/`](./ai-agent/) | FastAPI-based AI agent runtime that uses delegated identity and executes agent tools |
-| [`litellm-gateway/`](./litellm-gateway/) | PEP + AI Gateway (ConfigMap): SPIFFE `custom_auth`, CustomGuardrail `pdp_mcp.py` (OPA `mcp.pep` + CIBA), content guardrail, MCP nativo para `user-mcp` |
-| [`user-mcp/`](./user-mcp/) | FastMCP runtime (`USER_MCP_PEP_MODE=runtime`): tools de usuários, SQL, `database/creds` e Transform. JWT/scope/CIBA ficam no LiteLLM |
+| [`litellm-gateway/`](./litellm-gateway/) | PEP + AI Gateway (ConfigMap): SPIFFE `custom_auth`, CustomGuardrail `pdp_mcp.py` (OPA `mcp.pep`), content guardrail, MCP nativo para `user-mcp` |
+| [`user-mcp/`](./user-mcp/) | FastMCP runtime (`USER_MCP_PEP_MODE=runtime`): tools de usuários, SQL, `database/creds` e Transform. JWT/scope ficam no LiteLLM |
 | [`token-exchange/`](./token-exchange/) | FastAPI identity broker that performs Keycloak on-behalf-of (RFC 8693) token exchange |
 | [`keycloak-providers/`](./keycloak-providers/) | Custom Keycloak protocol-mapper SPI (RAR + actor-claim injection) baked into the Keycloak image — see [KEYCLOAK_REALM_SETUP.md](./KEYCLOAK_REALM_SETUP.md) |
-| [`ciba-channel/`](./ciba-channel/) | Minimal HTTP approval webhook backing Keycloak's CIBA authentication channel |
 | [`opa-gov-api/`](./opa-gov-api/) | FastAPI wrapper in front of OPA: `POST /evaluate` (prompt-injection + unsafe-code) and `POST /mask` (PII). LiteLLM guardrail chama `/evaluate` |
 | [`opa-policy-studio/`](./opa-policy-studio/) | React + TypeScript + Vite frontend-only PoC for authoring, listing, and evaluating OPA policies from the browser (Monaco editor, Rego highlighting, built-in Prompt Injection / Code Safety / PII test presets) |
 | [`opa-mcp-auth/`](./opa-mcp-auth/) | Seed + Rego legado `ext_authz`. O catálogo KV ainda é a fonte; no lab quem consulta é o **opa-server** (`mcp.pep`), não o sidecar do MCP |
@@ -95,7 +94,7 @@ The main repo components are:
 - Unique non-human identity for agentic workloads using platform-native identity and a HashiCorp Vault OIDC identity token, automatically injected by the platform into agentic workloads without requiring code changes
 - Agentic runtime security with HashiCorp Consul, HashiCorp Vault, and pluggable policy engines (OPA) without requiring code changes, including prompt injection prevention, PII masking, sensitive data filtering, and unsafe action blocking
 - Keycloak-authenticated user access combined with delegated on-behalf-of token exchange for downstream agent actions
-- Human-in-the-loop approval for `create_user` / `delete_user_by_email` via Keycloak CIBA: OPA `ciba_tools` decides; LiteLLM polls; humano em `:8082`
+- MFA step-up (LoA) enforced for `create_user`, validated independently by Vault on the write path
 - Deployment of the demo services into Kubernetes with Consul service mesh configuration and observability services
 
 ## Provision the demo environment
@@ -124,9 +123,8 @@ The documented deployment flow covers:
 4. LiteLLM PEP + `opa-server` (`mcp.pep`) + `opa-gov-api`
 5. `ai-agent` (MCP e LLM via LiteLLM)
 6. `web-app` (Next.js + Carbon)
-7. `ciba-channel`
-8. `opa-mcp-authz` + `consul-mcp-authz` (catálogo KV; enforce é o LiteLLM)
-9. Service intentions
+7. `opa-mcp-authz` + `consul-mcp-authz` (catálogo KV; enforce é o LiteLLM)
+8. Service intentions
 
 Para o lab local: [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) (`make up`).
 

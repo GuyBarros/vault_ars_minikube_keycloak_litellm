@@ -33,7 +33,6 @@ CONSUL_NODE_PORT="31501"
 VAULT_NODE_PORT="31200"
 WEB_NODE_PORT="30080"
 KEYCLOAK_NODE_PORT="30081"
-CIBA_CHANNEL_NODE_PORT="30082"
 LITELLM_NODE_PORT="30083"
 # Kubernetes only allows Service nodePort values in 30000-32767 (the values
 # above), so the "original" ports (matching the AWS flow's consul_host_port/
@@ -45,14 +44,13 @@ CONSUL_HOST_PORT="8501"
 VAULT_HOST_PORT="8200"
 WEB_HOST_PORT="8080"
 KEYCLOAK_HOST_PORT="8081"
-CIBA_CHANNEL_HOST_PORT="8082"
 LITELLM_HOST_PORT="4000"
 # Published host<->node ports (docker/podman driver only) so these NodePort
 # services are reachable at localhost:<port> from this machine directly, with
 # no `kubectl port-forward` needed. Only takes effect at node-creation time -
 # `minikube delete -p local-minikube-demo` first if the profile already
 # exists without these published.
-PUBLISHED_PORTS="${CONSUL_HOST_PORT}:${CONSUL_NODE_PORT},${VAULT_HOST_PORT}:${VAULT_NODE_PORT},${WEB_HOST_PORT}:${WEB_NODE_PORT},${KEYCLOAK_HOST_PORT}:${KEYCLOAK_NODE_PORT},${CIBA_CHANNEL_HOST_PORT}:${CIBA_CHANNEL_NODE_PORT},${LITELLM_HOST_PORT}:${LITELLM_NODE_PORT}"
+PUBLISHED_PORTS="${CONSUL_HOST_PORT}:${CONSUL_NODE_PORT},${VAULT_HOST_PORT}:${VAULT_NODE_PORT},${WEB_HOST_PORT}:${WEB_NODE_PORT},${KEYCLOAK_HOST_PORT}:${KEYCLOAK_NODE_PORT},${LITELLM_HOST_PORT}:${LITELLM_NODE_PORT}"
 
 for bin in minikube helm kubectl docker openssl jq envsubst uuidgen; do
   command -v "$bin" >/dev/null 2>&1 || { echo "missing required tool: $bin" >&2; exit 1; }
@@ -146,7 +144,7 @@ HELM upgrade --install consul hashicorp/consul \
   --set prometheus.enabled=true \
   --wait --timeout 15m
 
-# deploy-k8s manifests (ai-agent, web-app, ciba-channel, consul-mcp-authz) all
+# deploy-k8s manifests (ai-agent, web-app, consul-mcp-authz) all
 # address each other via Consul's "<service>.virtual.consul" DNS names, which
 # only resolve if cluster DNS forwards the "consul" zone to Consul's own DNS
 # service - CoreDNS has no idea about that zone by default. Without this,

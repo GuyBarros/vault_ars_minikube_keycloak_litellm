@@ -21,14 +21,13 @@ from errors import AppError
 from identity import OboTokenService
 
 
-def test_system_prompt_treats_create_user_as_blocking_ciba_write():
+def test_system_prompt_treats_create_user_as_immediate_write():
     # Regression: leftover IBM Verify device-grant copy made the model ask
-    # for a verification link / confirm_user_creation after CIBA already
-    # created the user.
+    # for a verification link / confirm_user_creation after create_user
+    # already created the user.
     assert "confirm_user_creation" not in SYSTEM_PROMPT
     assert "device_code" not in SYSTEM_PROMPT
     assert "does NOT create the user" not in SYSTEM_PROMPT
-    assert "CIBA" in SYSTEM_PROMPT
     assert "create_user" in SYSTEM_PROMPT
     assert "Never call `delete_user_by_email`" in SYSTEM_PROMPT
 

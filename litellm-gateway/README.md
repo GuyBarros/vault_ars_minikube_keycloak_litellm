@@ -7,13 +7,13 @@ Arquitetura e papéis: [`documentation/arquitetura-detalhada.md`](../documentati
 ## Responsabilidade
 
 - Admitir chamadores da malha por SPIFFE (`default/web`, `default/ai-agent`).
-- Em cada `/v1/agent/*` vindo de `default/web`: JWKS do access token Keycloak (`PEP_SUBJECT_AUDIENCE=token-exchange`, `PEP_SUBJECT_ISSUER`). O actor token é revalidado no `ai-agent` (exp) no mesmo turno. O JWT OBO/CIBA continua no `pre_mcp_call`.
+- Em cada `/v1/agent/*` vindo de `default/web`: JWKS do access token Keycloak (`PEP_SUBJECT_AUDIENCE=token-exchange`, `PEP_SUBJECT_ISSUER`). O actor token é revalidado no `ai-agent` (exp) no mesmo turno. O JWT OBO continua no `pre_mcp_call`.
 - Proxy `/v1/agent/*` → `ai-agent`, `/v1/chat/completions` → Ollama/OpenAI, MCP `/user_mcp/mcp` → `user-mcp`.
-- Em `tools/call`: validar JWT Keycloak, perguntar ao OPA `mcp.pep`, se `ciba_required` poll Keycloak, injetar OBO ou JWT CIBA em `Authorization`.
+- Em `tools/call`: validar JWT Keycloak, perguntar ao OPA `mcp.pep` (que decide LoA a partir do `acr`), injetar OBO em `Authorization`.
 
 Não guarda ACL, não executa SQL, não minta credencial Postgres.
 
-O YAML nativo do LiteLLM (keys, allowlist, OBO RFC 8693) **não** cobre catálogo OPA + CIBA + SPIFFE. Por isso `custom_auth` + CustomGuardrail.
+O YAML nativo do LiteLLM (keys, allowlist, OBO RFC 8693) **não** cobre catálogo OPA + LoA + SPIFFE. Por isso `custom_auth` + CustomGuardrail.
 
 ## Arquivos
 

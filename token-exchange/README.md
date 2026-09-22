@@ -82,11 +82,6 @@ All settings use the `IDENTITY_BROKER_` prefix and can be set as environment var
 | `IDENTITY_BROKER_OBO_CLIENT_ID` | _(unset)_ | Client ID for the OBO token exchange (confidential client) |
 | `IDENTITY_BROKER_OBO_CLIENT_SECRET` | _(required)_ | Client secret for the confidential token-exchange app. The broker fails to start if this is missing or empty. |
 
-CIBA (human-in-the-loop write approval) is handled entirely by `user-mcp`
-against Keycloak directly — see [`../user-mcp/README.md`](../user-mcp/README.md)
-and [`KEYCLOAK_REALM_SETUP.md`](../KEYCLOAK_REALM_SETUP.md). token-exchange has
-no CIBA-specific settings or endpoints.
-
 ### Cache and service settings
 
 | Variable | Default | Description |

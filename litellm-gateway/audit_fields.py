@@ -17,7 +17,6 @@ def stamp_caderno_audit(payload: dict[str, Any]) -> dict[str, Any]:
         "PDP_Decision" in payload
         or event == "pdp_decision"
         or event.startswith("token_chain")
-        or event.startswith("ciba_")
     )
     if not audit:
         return payload

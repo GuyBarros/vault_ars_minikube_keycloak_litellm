@@ -1,6 +1,6 @@
 # Local minikube (no AWS)
 
-Guia de configuração (env, Keycloak, Vault CIBA, LiteLLM): [`../../documentation/Guia_Configuracao.md`](../../documentation/Guia_Configuracao.md). Arquitetura: [`../../documentation/arquitetura-detalhada.md`](../../documentation/arquitetura-detalhada.md).
+Guia de configuração (env, Keycloak, Vault, LiteLLM): [`../../documentation/Guia_Configuracao.md`](../../documentation/Guia_Configuracao.md). Arquitetura: [`../../documentation/arquitetura-detalhada.md`](../../documentation/arquitetura-detalhada.md).
 
 ## Quickest path
 
@@ -127,7 +127,7 @@ LiteLLM's guardrail at `http://opa-gov-api.virtual.consul:8000`; `make images` b
 locally because the Docker Hub one is amd64-only. It creates the `opa` namespace *before* applying
 `service-intentions.yaml`, which carries `opa-service`'s intention.
 
-`make deploy` waits for the `web-api-gateway`, `ciba-channel-gateway` and `litellm-api-gateway`
+`make deploy` waits for the `web-api-gateway` and `litellm-api-gateway`
 Services (Consul creates them asynchronously) before patching their NodePorts.
 
 ## Deploying the demo apps

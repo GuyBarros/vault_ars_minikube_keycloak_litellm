@@ -452,7 +452,6 @@ class McpPep:
                 enforce="deny",
                 reason="tool_disabled",
                 allow=False,
-                ciba_required=False,
                 catalog_source=self._source,
                 catalog_dest=self._dest,
                 pdp_path=getattr(self._opa, "_url", PDP_PATH),

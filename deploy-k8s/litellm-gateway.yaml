@@ -1,6 +1,6 @@
 # LiteLLM proxy: PEP + AI Gateway. Callers are identified by their mesh
 # (SPIFFE) identity; Authorization is the upstream JWT. tools/call asks
-# opa-server (catalog + CIBA) and injects OBO/CIBA JWT toward user-mcp.
+# opa-server (catalog + scope) and injects the OBO JWT toward user-mcp.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -52,7 +52,7 @@ spec:
           env:
             - name: PYTHONPATH
               value: /app
-            # CIBA write tools block ~110s; LiteLLM's MCP client default is 60s.
+            # Local LLM tool calls can run long; LiteLLM's MCP client default is 60s.
             - name: LITELLM_MCP_CLIENT_TIMEOUT
               value: "150"
             - name: LITELLM_MCP_TOOL_LISTING_TIMEOUT

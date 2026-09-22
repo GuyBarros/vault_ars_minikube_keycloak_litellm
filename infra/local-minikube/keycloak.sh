@@ -1,10 +1,9 @@
 #!/bin/bash
 # Deploys Keycloak (with the custom keycloak-providers/ SPI baked in) and
 # then configures Vault's Keycloak-facing trust: a jwt-keycloak JWT auth
-# mount (used only to probe the CIBA-required-by-policy ACL switch) plus
-# Vault 2.1's native OAuth Resource Server + Agent Registry, which is what
-# actually authorizes database/creds and Transform calls now (see
-# infra/local-minikube/README.md).
+# mount (used to validate a completed step-up) plus Vault 2.1's native
+# OAuth Resource Server + Agent Registry, which is what actually authorizes
+# database/creds and Transform calls now (see infra/local-minikube/README.md).
 #
 # Run after bootstrap.sh and configure.sh (needs the shared postgres-0
 # StatefulSet and the Vault/Consul tokens configure.sh's port-forwards use).
@@ -43,7 +42,6 @@ KEYCLOAK_ADMIN_PASSWORD=$(gen_secret "$GEN_DIR/keycloak_admin_password")
 KEYCLOAK_DB_PASSWORD=$(gen_secret "$GEN_DIR/keycloak_db_password")
 WEB_CLIENT_SECRET=$(gen_secret "$GEN_DIR/keycloak_client_secret_web")
 TOKEN_EXCHANGE_CLIENT_SECRET=$(gen_secret "$GEN_DIR/keycloak_client_secret_token_exchange")
-CIBA_CLIENT_SECRET=$(gen_secret "$GEN_DIR/keycloak_client_secret_ciba")
 USER_MCP_CLIENT_SECRET=$(gen_secret "$GEN_DIR/keycloak_client_secret_user_mcp")
 LITELLM_CLIENT_SECRET=$(gen_secret "$GEN_DIR/keycloak_client_secret_litellm")
 LITELLM_DB_PASSWORD=$(gen_secret "$GEN_DIR/litellm_db_password")
@@ -107,7 +105,6 @@ KC create secret generic keycloak-admin-credentials \
 # ---- 4. Render + import the realm ----
 sed -e "s/__WEB_CLIENT_SECRET__/${WEB_CLIENT_SECRET}/" \
     -e "s/__TOKEN_EXCHANGE_CLIENT_SECRET__/${TOKEN_EXCHANGE_CLIENT_SECRET}/" \
-    -e "s/__CIBA_CLIENT_SECRET__/${CIBA_CLIENT_SECRET}/" \
     -e "s/__USER_MCP_CLIENT_SECRET__/${USER_MCP_CLIENT_SECRET}/" \
     -e "s/__LITELLM_CLIENT_SECRET__/${LITELLM_CLIENT_SECRET}/" \
   < "$SCRIPT_DIR/templates/keycloak-realm.json" \
@@ -160,7 +157,7 @@ python3 "$SCRIPT_DIR/keycloak_loa.py" --url http://localhost:18091 \
   --admin-password-file "$GEN_DIR/keycloak_admin_password"
 kill "$KC_LOA_PF_PID" 2>/dev/null || true
 
-# ---- 6. Vault: jwt-keycloak auth (CIBA-policy probe) + OAuth Resource
+# ---- 6. Vault: jwt-keycloak auth (step-up validation) + OAuth Resource
 #         Server + Agent Registry ----
 KC -n vault port-forward svc/vault 18200:8200 >"$GEN_DIR/pf-vault-keycloak.log" 2>&1 &
 VAULT_PF_PID=$!
@@ -173,73 +170,15 @@ VAULT_TOKEN=$(cat "$GEN_DIR/vault_token")
 for i in $(seq 1 30); do curl -sk "$VAULT_ADDR/v1/sys/health" >/dev/null 2>&1 && break; sleep 1; done
 
 vault auth list -format=json | jq -e 'has("jwt-keycloak/")' >/dev/null || \
-  vault auth enable -path=jwt-keycloak -description="JWT auth method for user-mcp OBO/CIBA tokens issued by Keycloak (CIBA-policy probe only)" jwt
+  vault auth enable -path=jwt-keycloak -description="JWT auth method for user-mcp OBO tokens issued by Keycloak (step-up validation only)" jwt
 vault write auth/jwt-keycloak/config \
   jwks_url="$KEYCLOAK_INTERNAL_JWKS" \
   bound_issuer="$KEYCLOAK_ISSUER" \
   jwt_supported_algs="RS256"
 
-# HITL switch: read on ciba/<action>/<user> means that human must Approve;
-# deny means silent OBO. create/delete = HITL; update is silent unless the
-# email counts as sensitive (see user-mcp/auth/rar_check.py). Reads stay
-# silent OBO across the board.
-vault policy write ciba-list-users - <<-EOT
-	path "ciba/list_all_users/user" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/list_all_users/writer" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/list_all_users/admin" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/search_users_by_first_name/user" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/search_users_by_first_name/writer" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/search_users_by_first_name/admin" {
-	  capabilities = ["deny"]
-	}
-	path "sys/capabilities-self" {
-	  capabilities = ["update"]
-	}
-	EOT
-
-vault policy write ciba-write - <<-EOT
-	path "ciba/create_user/writer" {
-	  capabilities = ["read"]
-	}
-	path "ciba/create_user/admin" {
-	  capabilities = ["read"]
-	}
-	path "ciba/delete_user_by_email/writer" {
-	  capabilities = ["read"]
-	}
-	path "ciba/delete_user_by_email/admin" {
-	  capabilities = ["read"]
-	}
-	path "ciba/update_user_by_email/writer" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/update_user_by_email/admin" {
-	  capabilities = ["deny"]
-	}
-	path "ciba/sensitive/writer" {
-	  capabilities = ["read"]
-	}
-	path "ciba/sensitive/admin" {
-	  capabilities = ["read"]
-	}
-	path "sys/capabilities-self" {
-	  capabilities = ["update"]
-	}
-	EOT
-
-jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["reader", "writer", "admin"], scope: "*users.read*"}, token_policies: ["ciba-list-users"], token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
+jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["reader", "writer", "admin"], scope: "*users.read*"}, token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
   | vault write auth/jwt-keycloak/role/user-mcp-oidc-read -
-jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["writer", "admin"], scope: "*users.write*", acr: "2"}, token_policies: ["ciba-write"], token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
+jq -n '{role_type: "jwt", user_claim: "preferred_username", bound_audiences: ["user-mcp"], bound_claims_type: "glob", bound_claims: {groups: ["writer", "admin"], scope: "*users.write*", acr: "2"}, token_ttl: 300, token_max_ttl: 900, token_type: "service"}' \
   | vault write auth/jwt-keycloak/role/user-mcp-oidc-write -
 # The write role binds acr=2, which Keycloak only issues after a step-up login
 # with OTP. user-mcp logs in with it for elevated actions, so Vault itself
@@ -385,7 +324,6 @@ register_agent "ai-agent" "$AI_AGENT_ENTITY_ID" \
 
 # ---- 7. Keep deploy-k8s/*.env's Keycloak client secrets in sync ----
 upsert_env_var "$DEPLOY_DIR/token-exchange.env" "IDENTITY_BROKER_OBO_CLIENT_SECRET" "$TOKEN_EXCHANGE_CLIENT_SECRET"
-upsert_env_var "$DEPLOY_DIR/user-mcp.env" "USER_MCP_CIBA_CLIENT_SECRET" "$CIBA_CLIENT_SECRET"
 upsert_env_var "$DEPLOY_DIR/web-app.env" "KEYCLOAK_CLIENT_SECRET" "$WEB_CLIENT_SECRET"
 
 echo
@@ -393,7 +331,7 @@ echo "=== done ==="
 echo "keycloak realm:        demo (http://localhost:8081/realms/demo)"
 echo "keycloak admin:        admin / $(cat "$GEN_DIR/keycloak_admin_password")"
 echo "demo logins:           user/user (reader), writer/writer (writer), admin/admin (admin)"
-echo "jwt-keycloak auth path: jwt-keycloak (CIBA-policy probe only)"
+echo "jwt-keycloak auth path: jwt-keycloak (step-up validation only)"
 echo "oauth-resource-server:  keycloak-demo"
 echo
 echo "Verify: curl -s http://localhost:8081/realms/demo/.well-known/openid-configuration | jq .issuer"

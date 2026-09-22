@@ -446,7 +446,7 @@ def create_app(
     async def agent_card(request: Request) -> dict:
         return {
             "name": "ai-agent",
-            "description": "Governed user-management agent (OBO + CIBA). Chat via /v1/agent.",
+            "description": "Governed user-management agent (OBO). Chat via /v1/agent.",
             "url": str(request.base_url).rstrip("/"),
             "protocolVersion": "1.0",
             "version": "1.0.0",
