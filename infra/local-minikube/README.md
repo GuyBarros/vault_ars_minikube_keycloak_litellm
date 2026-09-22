@@ -1,4 +1,4 @@
-# Local minikube (no AWS)
+# Local minikube
 
 Guia de configuração (env, Keycloak, Vault, LiteLLM): [`../../documentation/Guia_Configuracao.md`](../../documentation/Guia_Configuracao.md). Arquitetura: [`../../documentation/arquitetura-detalhada.md`](../../documentation/arquitetura-detalhada.md).
 
@@ -29,13 +29,10 @@ shared `postgres-0` StatefulSet for Keycloak's own database).
 ---
 
 `bootstrap.sh` brings up minikube + Consul Enterprise + Vault Enterprise directly on
-this machine — the local equivalent of `modules/minikube-allinone` (see
-`../README-minikube.md`), minus the EC2 instance, ALB, and socat bridges: kubectl/helm
-just talk to minikube directly.
+this machine: kubectl/helm talk to minikube directly, no cloud resources involved.
 
-Reuses the same license files (`infra/config/{consul,vault}_license.hclic`) and Helm
-values templates (`modules/minikube-allinone/templates/*.tftpl`, rendered with
-`envsubst` instead of Terraform) as the AWS flow, so the two stay in sync.
+Uses the license files at `infra/config/{consul,vault}_license.hclic` and renders
+Helm values from the `.tftpl` templates in `templates/` with `envsubst`.
 
 ```bash
 ./bootstrap.sh
@@ -62,12 +59,12 @@ re-run `bootstrap.sh` (you'll need to redo `configure.sh` and the app deploy bel
 
 ## MCP-authz control plane
 
-`configure.sh` is the local analog of `modules/minikube-resources-config`: Postgres
+`configure.sh` layers the MCP-authz control plane on top of `bootstrap.sh`: Postgres
 (seeded `users` table), the `k8s_jwt` Vault auth backend (validated against minikube's
-own SA signing key instead of an EKS OIDC endpoint), the OPA policy bundle, Vault's
-identity OIDC issuer/role, the `database` secrets engine (dynamic Postgres creds), and
-the Consul ACL token for consul-mcp-authz. The Keycloak-facing Vault config (jwt-keycloak,
-OAuth Resource Server, Agent Registry) is a separate stage — see `keycloak.sh` above.
+own SA signing key), the OPA policy bundle, Vault's identity OIDC issuer/role, the
+`database` secrets engine (dynamic Postgres creds), and the Consul ACL token for
+consul-mcp-authz. The Keycloak-facing Vault config (jwt-keycloak, OAuth Resource
+Server, Agent Registry) is a separate stage — see `keycloak.sh` above.
 Run `configure.sh` after `bootstrap.sh`:
 
 ```bash
@@ -137,9 +134,8 @@ config, `token-exchange`, `user-mcp`, `ai-agent`, `web-app` steps all apply as-i
 against `--context local-minikube-demo`.
 
 **One thing to check first:** `deploy-k8s/*.env` are per-machine (git-ignored), and
-`token-exchange.env`'s `VAULT_ADDR` in particular needs to point at this local Vault
-(`https://vault.vault.svc.cluster.local:8200`) rather than whatever host the AWS flow
-used.
+`token-exchange.env`'s `VAULT_ADDR` in particular needs to point at this local Vault:
+`https://vault.vault.svc.cluster.local:8200`.
 
 **Apple Silicon / arm64:** `panchalravi/agentguard-{user-mcp,ai-agent,web-app}:latest`
 on Docker Hub are amd64-only (only `agentguard-token-exchange` publishes an arm64
@@ -168,7 +164,7 @@ done
 `user-mcp/Dockerfile` also expects a `users_repository.json` seed file (git-ignored,
 only read by the unused `file` storage backend — this deploy uses
 `USER_BACKEND=postgres`); copy any placeholder there before building, e.g.
-`infra/modules/minikube-resources-config/users_seed.json`.
+`infra/local-minikube/templates/users_seed.json`.
 
 ## Using a local model (Ollama) for ai-agent
 

@@ -69,7 +69,7 @@ A missing or empty catalog default-denies everything — fail-closed.
 | `../deploy-k8s/opa-mcp-authz.yaml` | OPA Deployment with vault-agent sidecar, `--watch /policy /vault/secrets`. |
 | `../deploy-k8s/service-defaults-user-mcp.yaml` | Consul `ServiceDefaults` that wires user-mcp's inbound Envoy `builtin/ext-authz` at the `opa-mcp-authz` gRPC service. |
 | `../deploy-k8s/service-intentions.yaml` (`user-mcp` block) | Allows `ai-agent` and `consul-mcp-authz` to reach user-mcp through the mesh. |
-| `vault/policies.hcl` | Vault policy + JWT auth role snippets (manual + Terraform forms). |
+| `vault/policies.hcl` | Vault policy + JWT auth role snippets. |
 | `vault/seed-catalog.sh` | One-shot `vault kv put` to seed the initial catalog. |
 
 ## Prerequisites
@@ -103,10 +103,6 @@ Expect: `PASS: 14/14`.
 
 ## Step 2 — Create the Vault policy + JWT role
 
-Pick **one** of the two approaches.
-
-### (a) Manual (fastest for the pilot)
-
 ```bash
 # Vault policy: read on the KV path.
 cat <<'EOF' | vault policy write opa-mcp-authz -
@@ -128,11 +124,6 @@ vault write auth/k8s_jwt/role/opa-mcp-authz \
   user_claim="sub" \
   user_claim_json_pointer=true
 ```
-
-### (b) Terraform
-
-Copy the resources from `vault/policies.hcl` (section (b)) into
-`infra/modules/consul-client-k8s/vault.tf`, then `terraform apply`.
 
 ## Step 3 — Seed the catalog in Vault
 

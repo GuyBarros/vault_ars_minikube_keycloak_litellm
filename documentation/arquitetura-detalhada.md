@@ -9,7 +9,7 @@ Estado **atual** do `make up` em `infra/local-minikube`. Papéis, pasta de cada 
 | [`pep-inventory.md`](./pep-inventory.md) | Inventário de **regras** (incluindo Lua e `USER_MCP_PEP_MODE=local`, que o lab não usa) |
 | [`Guia_Configuracao.md`](./Guia_Configuracao.md) | Env vars, URLs, Keycloak, Ollama, timeouts |
 
-Não descreve o Terraform AWS/EKS. O desenho de produto (diagramas PNG) em `documentation/agent_control_plane/` ainda mostra o agente com policy engine Lua — o lab já passou o hop de IA pelo LiteLLM.
+O desenho de produto (diagramas PNG) em `documentation/agent_control_plane/` ainda mostra o agente com policy engine Lua — o lab já passou o hop de IA pelo LiteLLM.
 
 ---
 
@@ -78,7 +78,6 @@ vault-log/               Viewer SSE dos hops
 deploy-k8s/              Manifests + *.env (env git-ignored)
 infra/local-minikube/    make up / scripts do lab
 infra/config/            Licenças + bundle OPA
-infra/modules/           Terraform AWS (fora deste lab)
 documentation/           Guias e inventários
 ```
 
@@ -201,7 +200,6 @@ API FastAPI (`api/`) + UI Next (`ui/`) no mesmo pod. CRUD do documento Vault `op
 | Pasta | Papel |
 | --- | --- |
 | `opa-policy-studio/` | Autoração Rego no browser |
-| `infra/modules/`, `infra/ami/` | AWS |
 
 ---
 

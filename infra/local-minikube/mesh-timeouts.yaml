@@ -1,8 +1,6 @@
-# Local-only Consul mesh timeout overrides. The AWS flow's hosted model is
-# fast enough that Envoy's defaults are never an issue there - a local
-# Ollama/Qwen model on this machine is measurably slower (observed up to
-# ~127s for "list all users"), so every hop on the request's path back to
-# the browser needs raising:
+# Local-only Consul mesh timeout overrides. A local Ollama/Qwen model on this
+# machine is measurably slow (observed up to ~127s for "list all users"), so
+# every hop on the request's path back to the browser needs raising:
 #
 #   browser -> web-api-gateway -> web (Next.js, streams the response through)
 #                                -> ai-agent -> ... -> Qwen
@@ -26,7 +24,7 @@
 #    not installed here) - Consul's RouteTimeoutFilter CRD is the equivalent
 #    for this version, attached to web-route via `filters`.
 #
-# Kept separate from deploy-k8s/*.yaml so the AWS flow is unaffected.
+# Kept separate from deploy-k8s/*.yaml so those manifests stay generic.
 #
 # user-mcp and token-exchange keep the same generous timeout as the rest of
 # the chain: ServiceResolver.requestTimeout is what governs each hop, and

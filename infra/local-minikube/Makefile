@@ -1,4 +1,4 @@
-# Build/destroy the ai-iam-guardrails demo on a fully local minikube (no AWS).
+# Build/destroy the ai-iam-guardrails demo on a fully local minikube.
 # See README.md for what each stage actually does and why.
 #
 #   make up        - full build: cluster -> control plane -> Keycloak -> images -> apps
@@ -51,7 +51,7 @@ keycloak:
 # loads them into the node. See README.md.
 images:
 	[ -f $(REPO_ROOT)/user-mcp/users_repository.json ] || \
-		cp $(REPO_ROOT)/infra/modules/minikube-resources-config/users_seed.json \
+		cp $(REPO_ROOT)/infra/local-minikube/templates/users_seed.json \
 		   $(REPO_ROOT)/user-mcp/users_repository.json
 	docker build --load -t agentguard-user-mcp:local $(REPO_ROOT)/user-mcp
 	docker build --load -t agentguard-ai-agent:local $(REPO_ROOT)/ai-agent

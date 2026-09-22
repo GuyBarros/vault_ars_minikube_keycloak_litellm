@@ -3,11 +3,9 @@
 # in randomly generated values for secrets this script can generate itself.
 # Safe to re-run: never overwrites an .env file that already exists.
 #
-# Client secrets synced from a real Keycloak realm (IDENTITY_BROKER_OBO_CLIENT_SECRET,
+# Client secrets synced from the Keycloak realm (IDENTITY_BROKER_OBO_CLIENT_SECRET,
 # KEYCLOAK_CLIENT_SECRET) are left blank here and get filled in by
-# infra/local-minikube/keycloak.sh (`make keycloak`) for the local minikube
-# flow. For a manual/EKS deploy, set them by hand from your Keycloak client
-# configuration.
+# infra/local-minikube/keycloak.sh (`make keycloak`).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,8 +40,7 @@ cat <<'EOF'
 
 deploy-k8s/*.env generated. Remaining values you must supply by hand:
   - Keycloak client secrets (IDENTITY_BROKER_OBO_CLIENT_SECRET, KEYCLOAK_CLIENT_SECRET):
-    auto-filled by `make keycloak` in infra/local-minikube/ for the local lab,
-    or copy from your Keycloak client config for a manual/EKS deploy.
+    auto-filled by `make keycloak` in infra/local-minikube/.
   - WATSONX_APIKEY / WATSONX_PROJECT_ID in ai-agent.env: only needed if you want the
     watsonx.ai LLM fallback instead of the default local Ollama model.
   - USER_MCP_METABASE_URL in user-mcp.env: only needed if you want the optional

@@ -1,22 +1,16 @@
 #!/bin/bash
-# Local analog of modules/minikube-allinone (bootstrap.sh.tftpl) + the Vault
-# init/unseal step from modules/minikube-allinone/main.tf, run directly on
-# this machine instead of on a remote EC2 instance. No AWS resources, no ALB,
-# no socat bridges — minikube runs right here, so kubectl/helm reach it
-# directly.
-#
-# Brings up: minikube (docker driver) -> Consul Enterprise + Vault Enterprise
-# (Helm, TLS, ACLs) -> Vault init/unseal. Reuses the same Helm values
-# templates as the AWS module (rendered with envsubst instead of Terraform).
+# Brings up the local minikube lab: minikube (docker driver) -> Consul
+# Enterprise + Vault Enterprise (Helm, TLS, ACLs) -> Vault init/unseal.
+# Helm values are rendered from the .tftpl templates in templates/ with
+# envsubst.
 #
 # Does NOT configure the MCP-authz control plane (Vault JWT auth / DB secrets
-# engine / Postgres / Consul ACL token) that modules/minikube-resources-config
-# layers on top in the AWS flow — that is a separate, not-yet-built step.
+# engine / Postgres / Consul ACL token) — that is configure.sh, run next.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
-TEMPLATES_DIR="$INFRA_DIR/modules/minikube-allinone/templates"
+TEMPLATES_DIR="$SCRIPT_DIR/templates"
 GEN_DIR="$SCRIPT_DIR/generated"
 source "$SCRIPT_DIR/local-config.sh"
 
@@ -35,11 +29,9 @@ WEB_NODE_PORT="30080"
 KEYCLOAK_NODE_PORT="30081"
 LITELLM_NODE_PORT="30083"
 # Kubernetes only allows Service nodePort values in 30000-32767 (the values
-# above), so the "original" ports (matching the AWS flow's consul_host_port/
-# vault_host_port variables, and the web app's own container port) are
-# published as a *different* host-side port mapped onto each NodePort -
-# exactly what the AWS module's socat units do (host 8501/8200 -> node
-# 31501/31200), just via docker/podman's own port publishing instead.
+# above), so the familiar host-side ports (8501/8200 for Consul/Vault, and the
+# web app's own container port) are published as a *different* host-side port
+# mapped onto each NodePort, via docker/podman's own port publishing.
 CONSUL_HOST_PORT="8501"
 VAULT_HOST_PORT="8200"
 WEB_HOST_PORT="8080"
@@ -92,7 +84,7 @@ else
   echo "profile $PROFILE already running, skipping start"
 fi
 
-echo "=== 2. Vault self-signed TLS (mirrors modules/minikube-allinone/tls.tf) ==="
+echo "=== 2. Vault self-signed TLS ==="
 if [ ! -f "$GEN_DIR/vault-fullchain.crt" ]; then
   openssl req -x509 -newkey rsa:2048 -nodes -days 1825 -sha256 \
     -keyout "$GEN_DIR/ca.key" -out "$GEN_DIR/ca.crt" \
@@ -111,7 +103,7 @@ else
   echo "TLS material already generated, skipping"
 fi
 
-echo "=== 3. Render Helm values (reusing modules/minikube-allinone/templates/*.tftpl) ==="
+echo "=== 3. Render Helm values (templates/*.tftpl) ==="
 datacenter="$DATACENTER" consul_version="$CONSUL_IMAGE_VERSION" consul_node_port="$CONSUL_NODE_PORT" \
   envsubst '${datacenter} ${consul_version} ${consul_node_port}' \
   < "$TEMPLATES_DIR/consul-server-values.yaml.tftpl" > "$GEN_DIR/consul-values.yaml"
@@ -136,7 +128,7 @@ helm repo update hashicorp >/dev/null
 # prometheus.enabled installs the chart's demo Prometheus, which scrapes the
 # Envoy sidecars' latency histograms and backs the Consul UI's service metrics
 # (ui.metrics defaults to http://prometheus-server). Set here rather than in
-# the shared template so the AWS module is unaffected.
+# the shared template so that template stays generic.
 HELM upgrade --install consul hashicorp/consul \
   --namespace "$CONSUL_NAMESPACE" \
   --version "$CONSUL_CHART_VERSION" \
@@ -225,6 +217,6 @@ echo "Consul UI:  kubectl --context $PROFILE port-forward -n consul svc/consul-u
 echo "Vault UI:   kubectl --context $PROFILE port-forward -n vault svc/vault 8200:8200"
 echo
 echo "NOTE: the MCP-authz control plane (Vault JWT auth, DB secrets engine, Postgres,"
-echo "Consul ACL token) from modules/minikube-resources-config is NOT set up yet."
+echo "Consul ACL token) is not set up yet — run 'make configure' next."
 echo "The deploy-k8s app manifests (token-exchange, user-mcp, ai-agent, web-app) depend"
-echo "on it and will not work end-to-end until that is ported to run locally too."
+echo "on it and will not work end-to-end until that runs."

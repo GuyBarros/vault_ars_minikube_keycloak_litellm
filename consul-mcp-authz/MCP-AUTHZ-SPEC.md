@@ -313,9 +313,9 @@ data path and project README.
   `opa-policies/data/mcp-authz/catalog`; `read` on the corresponding
   `metadata/` path. The Consul ACL read-only token for discovery is
   seeded into Vault KV at `opa-policies/data/consul/mcp-authz-token`
-  and rendered onto the API pod by vault-agent. All of these resources
-  are managed in
-  `infra/modules/consul-client-k8s/{vault.tf,consul-mcp-authz.tf}`.
+  and rendered onto the API pod by vault-agent. See
+  `opa-mcp-auth/vault/policies.hcl` for the `vault policy write` /
+  `vault write auth/k8s_jwt/role/...` commands.
 
 ### 5.2 Endpoints
 
@@ -615,10 +615,8 @@ requirement) actually appears.
 | `opa-mcp-auth/policy/mcp/authz/mcp_authz.rego` | done | Data-driven policy |
 | `opa-mcp-auth/policy/mcp/authz/mcp_authz_test.rego` | done | 13 tests, all PASS |
 | `opa-mcp-auth/opa-mcp-authz.yaml` | done | Deployment + Service + ConfigMap with vault-agent sidecar |
-| `opa-mcp-auth/vault/policies.hcl` | done | Vault policy + JWT role (manual + Terraform forms) |
+| `opa-mcp-auth/vault/policies.hcl` | done | Vault policy + JWT role snippets: `opa-mcp-authz` (read), `consul-mcp-authz` (create/read/update + KV metadata read) |
 | `opa-mcp-auth/vault/seed-catalog.sh` | done | One-shot catalog seed |
-| `infra/modules/consul-client-k8s/vault.tf` | done | Vault policies + JWT roles: `opa-mcp-authz` (read), `consul-mcp-authz` (create/read/update + KV metadata read) |
-| `infra/modules/consul-client-k8s/consul-mcp-authz.tf` | done | Consul ACL policy + token (read-only catalog) + `vault_kv_secret_v2` that seeds the token to `opa-policies/data/consul/mcp-authz-token` |
 | `consul-mcp-authz/README.md` | done | Project umbrella README — Step 1-8 (API) + Step 9 (UI) + Done definition for both |
 | `consul-mcp-authz/Dockerfile` | done | Multi-stage build: ui-builder + api-builder + opa + node binary → single runtime image |
 | `consul-mcp-authz/supervisord.conf` | done | Process supervisor for `uvicorn` + `node /app/ui/server.js` |

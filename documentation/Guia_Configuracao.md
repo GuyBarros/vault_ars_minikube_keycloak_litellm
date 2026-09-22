@@ -342,13 +342,3 @@ consul connect ca get-config | jq -r .Provider   # vault (com CONSUL_HTTP_ADDR/T
 ```
 
 Fluxo funcional: login `admin`/`admin` em `:8080` → “List all users.” (LoA 1) → create user → web-app redireciona para o step-up OTP do Keycloak (`web-app/src/lib/auth/step-up.ts`) → depois do OTP, retry automático → inspector **LoA 2 ALLOW** em `create_user`.
-
----
-
-## 13. AWS / EKS
-
-O mesmo conjunto de manifests em `deploy-k8s/` vale depois do Terraform em `infra/` (`module.common` → `servers` → `consul_client_k8s` → `observability`). Diferenças:
-
-- `VAULT_ADDR` e Postgres usam o DNS **in-cluster**, nunca o ALB (SG do LB só admite o `/32` de quem aplicou o Terraform).
-- Imagens Docker Hub `panchalravi/agentguard-*` são amd64; em Apple Silicon o `make images` constrói tags `:local`.
-- Não rode `make up` contra um cluster AWS — o profile `local-minikube-demo` é só o laboratório nesta máquina.

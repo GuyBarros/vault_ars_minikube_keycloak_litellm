@@ -420,7 +420,7 @@ Common failure modes:
 
 ## Vault integration reference
 
-The Vault and Postgres infrastructure backing this service is provisioned by the Terraform module at [`infra/modules/consul-client-k8s/vault_db.tf`](../infra/modules/consul-client-k8s/vault_db.tf). The defaults compiled into `user-mcp` (JWT auth path, role names, DB credential paths) match that module out of the box. If you stand up Vault by hand, the equivalent steps are:
+The Vault and Postgres infrastructure backing this service is provisioned by [`infra/local-minikube/configure.sh`](../infra/local-minikube/configure.sh). The defaults compiled into `user-mcp` (JWT auth path, role names, DB credential paths) match that script out of the box. If you stand up Vault by hand, the equivalent steps are:
 
 1. **Enable the JWT auth method** at the configured path and bind it to Keycloak's OIDC discovery URL:
 

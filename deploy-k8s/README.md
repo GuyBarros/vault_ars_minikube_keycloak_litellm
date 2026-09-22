@@ -2,7 +2,7 @@
 
 Lab local: `make up` / `make deploy` em [`infra/local-minikube/`](../infra/local-minikube/). Papéis e arquivos: [`documentation/arquitetura-detalhada.md`](../documentation/arquitetura-detalhada.md).
 
-Este README é o apply **manual** (AWS/EKS ou debug). No minikube **não** ligue `ext_authz` no `user-mcp`: o catálogo é enforce no LiteLLM → OPA `mcp.pep`. `service-defaults-user-mcp.yaml` só tem timeout HTTP.
+Este README é o apply **manual** (debug de manifests individuais). No minikube **não** ligue `ext_authz` no `user-mcp`: o catálogo é enforce no LiteLLM → OPA `mcp.pep`. `service-defaults-user-mcp.yaml` só tem timeout HTTP.
 
 ## Generate the .env files
 
@@ -12,7 +12,7 @@ Este README é o apply **manual** (AWS/EKS ou debug). No minikube **não** ligue
 ./deploy-k8s/setup-env.sh
 ```
 
-This copies each `*.env.example` to `*.env` (skipping any that already exist) and fills in randomly generated values for `USER_MCP_DB_PASSWORD` and `SESSION_PASSWORD`. Keycloak client secrets are left blank — for the local minikube lab, `make keycloak` (`infra/local-minikube/keycloak.sh`) fills them in automatically; for a manual/EKS deploy, copy them from your Keycloak client configuration.
+This copies each `*.env.example` to `*.env` (skipping any that already exist) and fills in randomly generated values for `USER_MCP_DB_PASSWORD` and `SESSION_PASSWORD`. Keycloak client secrets are left blank — `make keycloak` (`infra/local-minikube/keycloak.sh`) fills them in automatically.
 
 ## Deploy Consul configurations
 ```
@@ -34,15 +34,13 @@ kubectl apply -f deploy-k8s/token-exchange.yaml
 ## Deploy user-mcp service
 
 > **Minikube:** user-mcp runs *inside* the cluster, so it must reach Vault and
-> Postgres over in-cluster service DNS — not the external load balancer (the LB
-> security group only admits the Terraform caller's /32, and pod traffic arrives
-> from the VM's public IP). Before creating the secret, set these two vars in
-> `deploy-k8s/user-mcp.env`:
+> Postgres over in-cluster service DNS, not an external hostname. Before
+> creating the secret, set these two vars in `deploy-k8s/user-mcp.env`:
 >
 > - `USER_MCP_VAULT_ADDR=https://vault.vault.svc:8200`
 > - `USER_MCP_PG_URL="postgresql://postgres.default.svc.cluster.local:5432/users?sslmode=disable"`
 >
-> Leaving them at the external/EKS hostnames fails with `ConnectError` (Vault) or
+> Leaving them at an external hostname fails with `ConnectError` (Vault) or
 > `gaierror: Name or service not known` (Postgres).
 
 ```

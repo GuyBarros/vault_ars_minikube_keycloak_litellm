@@ -80,7 +80,7 @@ The main repo components are:
 | [`opa-mcp-auth/`](./opa-mcp-auth/) | Seed + Rego legado `ext_authz`. O catálogo KV ainda é a fonte; no lab quem consulta é o **opa-server** (`mcp.pep`), não o sidecar do MCP |
 | [`consul-mcp-authz/`](./consul-mcp-authz/) | UI/API operador do catálogo Vault `opa-policies/mcp-authz/catalog` |
 | [`vault-log/`](./vault-log/) | Viewer SSE dos hops (`make hop-logs` → http://127.0.0.1:8753/) |
-| [`infra/`](./infra/) | Terraform and AMI build workflow for provisioning the demo platform, including Vault and Consul foundations |
+| [`infra/local-minikube/`](./infra/local-minikube/) | `make up` — bootstraps minikube, Consul, and Vault, then configures the MCP-authz control plane |
 | [`deploy-k8s/`](./deploy-k8s/) | Kubernetes, Consul, and policy-enforcement deployment manifests plus deployment order |
 | [`documentation/agent_control_plane/`](./documentation/agent_control_plane/) | Product-level architecture diagrams for the agentic security control plane |
 | [`documentation/agentic_identity/`](./documentation/agentic_identity/) | Design documentation for platform-native identity to Vault-issued agent identity |
@@ -97,23 +97,16 @@ The main repo components are:
 - MFA step-up (LoA) enforced for `create_user`, validated independently by Vault on the write path
 - Deployment of the demo services into Kubernetes with Consul service mesh configuration and observability services
 
-## Provision the demo environment
+## Provision and deploy the demo environment
 
-Run the infrastructure workflow from [`infra/`](./infra/).
+Everything runs locally on minikube — no cloud provisioning required.
 
-1. Review prerequisites and build the base AMI by following [`infra/README.md`](./infra/README.md) and the detailed AMI instructions in [`infra/ami/base_image/README.md`](./infra/ami/base_image/README.md).
-2. From `infra/`, initialize and validate Terraform, then apply the modules in the documented order:
-   - `module.common`
-   - `module.servers`
-   - `module.consul_client_k8s`
-   - `module.observability`
-3. Do not provision the modules called out as excluded in [`infra/README.md`](./infra/README.md).
+```bash
+cd infra/local-minikube
+make up   # bootstrap → configure → keycloak → images → deploy → verify
+```
 
-For the exact commands, prerequisites, generated artifacts, and apply sequence, use [`infra/README.md`](./infra/README.md).
-
-## Deploy the sample applications
-
-After Terraform provisioning is complete, deploy the workloads by following [`deploy-k8s/README.md`](./deploy-k8s/README.md).
+See [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) for prerequisites, individual stages (`make bootstrap`, `make configure`, `make keycloak`, `make images`, `make deploy`), and troubleshooting. For manually applying or debugging individual manifests, see [`deploy-k8s/README.md`](./deploy-k8s/README.md).
 
 The documented deployment flow covers:
 
@@ -141,8 +134,6 @@ Use the component READMEs below for service-specific configuration, local develo
 | [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) | Local minikube stages (`bootstrap` / `configure` / `keycloak` / `images` / `deploy`), the mesh setup for Vault and Postgres, and Vault as the Consul Connect CA |
 | [`litellm-gateway/README.md`](./litellm-gateway/README.md) | PEP CustomGuardrail + `custom_auth` SPIFFE |
 | [`vault-log/README.md`](./vault-log/README.md) | Hop viewer SSE (`make hop-logs`) |
-| [`infra/README.md`](./infra/README.md) | Terraform provisioning sequence for the demo environment |
-| [`infra/ami/base_image/README.md`](./infra/ami/base_image/README.md) | Base AMI build process required before Terraform apply |
 | [`deploy-k8s/README.md`](./deploy-k8s/README.md) | Kubernetes deployment order, secrets, Consul config, and cleanup |
 | [`web-app/README.md`](./web-app/README.md) | Next.js + Carbon web UI setup, Keycloak OAuth configuration, scripts, Docker, and Kubernetes details |
 | [`ai-agent/README.md`](./ai-agent/README.md) | AI agent API behavior, configuration, local run, container build, and Kubernetes details |
@@ -159,6 +150,6 @@ Use the component READMEs below for service-specific configuration, local develo
 
 1. Start with [`documentation/arquitetura-detalhada.md`](./documentation/arquitetura-detalhada.md) for who does what and where the code lives.
 2. Use [`documentation/Guia_Configuracao.md`](./documentation/Guia_Configuracao.md) for env vars, IdP, Vault, mesh, and LLM.
-3. Use [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) (or [`infra/README.md`](./infra/README.md) on AWS) to provision the environment.
+3. Use [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) to provision the environment.
 4. Use [`deploy-k8s/README.md`](./deploy-k8s/README.md) to deploy the workloads.
 5. Use the individual service READMEs for detailed configuration and troubleshooting.

@@ -1,6 +1,6 @@
 # Fluxo e responsabilidades — laboratório minikube
 
-Estado **atual** do lab (`make up` em `infra/local-minikube`). Não descreve o desenho AWS/EKS nem o PEP Lua legado.
+Estado **atual** do lab (`make up` em `infra/local-minikube`). Não descreve o PEP Lua legado.
 
 Mapa de pastas, tools e scripts: [`arquitetura-detalhada.md`](./arquitetura-detalhada.md).  
 Inventário das regras (incluindo o que ainda não migrou): [`pep-inventory.md`](./pep-inventory.md).  

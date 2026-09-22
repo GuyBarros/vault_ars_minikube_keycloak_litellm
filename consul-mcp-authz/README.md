@@ -251,27 +251,15 @@ via vault-agent. Missing/empty token → those two endpoints return
 
 ## Step 1 — Apply the Vault role + policy
 
-The Vault resources are managed in
-[`infra/modules/consul-client-k8s/vault.tf`](../infra/modules/consul-client-k8s/vault.tf):
+- A Vault policy `consul-mcp-authz` — capabilities `create, read,
+  update` on `opa-policies/data/mcp-authz/catalog` and `read` on its
+  `metadata` path.
+- A `k8s_jwt` JWT auth role `consul-mcp-authz` — binds the
+  `default/consul-mcp-authz` ServiceAccount to that policy.
 
-- `resource "vault_policy" "consul_mcp_authz"` — capabilities
-  `create, read, update` on `opa-policies/data/mcp-authz/catalog` and
-  `read` on its `metadata` path.
-- `resource "vault_jwt_auth_backend_role" "consul_mcp_authz"` —
-  binds the `default/consul-mcp-authz` ServiceAccount to that
-  policy via the existing `k8s_jwt` JWT auth backend.
-
-Apply:
-
-```bash
-cd infra/modules/consul-client-k8s
-terraform apply -target=vault_policy.consul_mcp_authz \
-                -target=vault_jwt_auth_backend_role.consul_mcp_authz
-```
-
-A manual `vault policy write` + `vault write auth/k8s_jwt/role/...`
-equivalent (for clusters not using this Terraform module) is documented
-in [`../opa-mcp-auth/vault/policies.hcl`](../opa-mcp-auth/vault/policies.hcl)
+The `vault policy write` + `vault write auth/k8s_jwt/role/...` commands
+are documented in
+[`../opa-mcp-auth/vault/policies.hcl`](../opa-mcp-auth/vault/policies.hcl)
 under "consul-mcp-authz (P1 pilot)".
 
 ---
@@ -506,38 +494,8 @@ kubectl exec deploy/ai-agent -c ai-agent -- \
 
 ### 7.1 — Seed the Consul ACL token into Vault (one-time)
 
-The ACL policy, token, and Vault KV seed are managed by Terraform at
-[`infra/modules/consul-client-k8s/consul-mcp-authz.tf`](../infra/modules/consul-client-k8s/consul-mcp-authz.tf):
-
-- `consul_acl_policy.consul_mcp_authz` — read services across
-  every Consul namespace.
-- `consul_acl_token.consul_mcp_authz` — bound to that policy.
-- `data.consul_acl_token_secret_id.consul_mcp_authz` — reads the
-  token's secret value (the provider hides it on the resource itself).
-- `vault_kv_secret_v2.consul_mcp_authz_token` — writes
-  `{"token": "<secret>"}` to `opa-policies/consul/mcp-authz-token`,
-  which is the path the API's vault-agent renders to
-  `/vault/secrets/consul-token`.
-
-Apply:
-
-```bash
-cd infra/modules/consul-client-k8s
-terraform apply \
-  -target=consul_acl_policy.consul_mcp_authz \
-  -target=consul_acl_token.consul_mcp_authz \
-  -target=vault_kv_secret_v2.consul_mcp_authz_token
-```
-
-Bounce the API pod so vault-agent picks up the new KV path:
-
-```bash
-kubectl rollout restart deploy/consul-mcp-authz
-kubectl rollout status deploy/consul-mcp-authz
-```
-
-<details>
-<summary>Manual equivalent (for clusters not using this Terraform module)</summary>
+The API's vault-agent renders `opa-policies/consul/mcp-authz-token` to
+`/vault/secrets/consul-token`. Seed it:
 
 ```hcl
 # consul-mcp-authz-read.hcl
@@ -555,7 +513,13 @@ CONSUL_TOKEN=$(consul acl token create \
   -policy-name consul-mcp-authz-read -format=json | jq -r .SecretID)
 vault kv put opa-policies/consul/mcp-authz-token token="$CONSUL_TOKEN"
 ```
-</details>
+
+Bounce the API pod so vault-agent picks up the new KV path:
+
+```bash
+kubectl rollout restart deploy/consul-mcp-authz
+kubectl rollout status deploy/consul-mcp-authz
+```
 
 ### 7.2 — Add the role annotation to workloads (one-time, already applied here)
 

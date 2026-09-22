@@ -1,11 +1,8 @@
 #!/bin/bash
-# Local analog of modules/minikube-resources-config: layers the MCP-authz
-# control plane (Vault JWT auth, OPA bundle, identity OIDC, DB secrets engine,
-# Postgres, Consul ACL token) on top of the Consul/Vault that bootstrap.sh
-# brings up. Run bootstrap.sh first.
+# Layers the MCP-authz control plane (Vault JWT auth, OPA bundle, identity
+# OIDC, DB secrets engine, Postgres, Consul ACL token) on top of the
+# Consul/Vault that bootstrap.sh brings up. Run bootstrap.sh first.
 #
-# The AWS module does this over SSH (the minikube apiserver isn't routable
-# from the Terraform host) and reaches Vault/Consul through the ALB. Here
 # minikube runs on this machine, so every step below runs directly:
 # kubectl/minikube commands hit the cluster directly, and Vault/Consul are
 # driven with the real CLIs against a port-forward.
@@ -13,7 +10,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INFRA_DIR="$(dirname "$SCRIPT_DIR")"
-RESOURCES_DIR="$INFRA_DIR/modules/minikube-resources-config"
+RESOURCES_DIR="$SCRIPT_DIR/templates"
 GEN_DIR="$SCRIPT_DIR/generated"
 PROFILE="local-minikube-demo"
 source "$SCRIPT_DIR/local-config.sh"
@@ -25,7 +22,7 @@ done
 [ -f "$GEN_DIR/vault_token" ] || { echo "run bootstrap.sh first (missing $GEN_DIR/vault_token)" >&2; exit 1; }
 [ -f "$GEN_DIR/consul_token" ] || { echo "run bootstrap.sh first (missing $GEN_DIR/consul_token)" >&2; exit 1; }
 
-# ---- locals (mirrors modules/minikube-resources-config/locals.tf) ----
+# ---- locals ----
 K8S_SA_ISSUER="https://kubernetes.default.svc.cluster.local"
 K8S_SA_AUDIENCE="$K8S_SA_ISSUER"
 POSTGRES_NAMESPACE="default"
@@ -86,7 +83,7 @@ namespace="$POSTGRES_NAMESPACE" app_label="$POSTGRES_APP_LABEL" service_name="$P
   statefulset_name="$POSTGRES_STATEFULSET_NAME" secret_name="$POSTGRES_SECRET_NAME" \
   admin_user="$POSTGRES_ADMIN_USER" admin_db="$POSTGRES_ADMIN_DB" admin_password="$POSTGRES_ADMIN_PASSWORD" \
   envsubst '${namespace} ${app_label} ${service_name} ${statefulset_name} ${secret_name} ${admin_user} ${admin_db} ${admin_password}' \
-  < "$RESOURCES_DIR/templates/postgres.yaml.tftpl" > "$GEN_DIR/postgres.yaml"
+  < "$RESOURCES_DIR/postgres.yaml.tftpl" > "$GEN_DIR/postgres.yaml"
 
 KC apply -f "$GEN_DIR/postgres.yaml"
 KC -n "$POSTGRES_NAMESPACE" rollout status statefulset/"$POSTGRES_STATEFULSET_NAME" --timeout=300s
