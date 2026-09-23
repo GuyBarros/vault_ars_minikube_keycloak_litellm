@@ -253,13 +253,19 @@ def create_app(
         # lifespan startup finishes, and a 30s MCP retry loop would 503 every
         # caller (web -> LiteLLM -> this pod) with Envoy "connection refused".
         # Queries that land before discovery completes run with no MCP tools.
+        # A rolling deploy can leave the gateway unreachable for longer than
+        # one retry window, and discovery never reruns, so keep going until
+        # tools are found instead of leaving the agent with none until restart.
         async def _discover() -> None:
-            app_inner.state.mcp_template_tools = (
-                await _discover_mcp_template_tools_at_startup(
+            while True:
+                templates = await _discover_mcp_template_tools_at_startup(
                     active_settings.user_mcp_url,
                     active_settings.mcp_tool_call_timeout_seconds,
                 )
-            )
+                if templates:
+                    app_inner.state.mcp_template_tools = templates
+                    return
+                await asyncio.sleep(30)
 
         app_inner.state.mcp_discovery_task = asyncio.create_task(_discover())
         yield

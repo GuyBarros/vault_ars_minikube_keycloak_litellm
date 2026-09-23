@@ -100,7 +100,7 @@
     },
     {
       "type": "arrow",
-      "id": "user-to-verify",
+      "id": "user-to-keycloak",
       "x": 754,
       "y": 98,
       "width": 0.7483211013094433,
@@ -433,7 +433,7 @@
     },
     {
       "type": "rectangle",
-      "id": "ibm-verify-card",
+      "id": "keycloak-card",
       "x": 520,
       "y": 205,
       "width": 340,
@@ -463,11 +463,11 @@
     },
     {
       "type": "image",
-      "id": "ibm-verify-logo",
-      "x": 572,
-      "y": 216,
-      "width": 37.11487031400237,
-      "height": 46.39358789250296,
+      "id": "keycloak-logo",
+      "x": 568,
+      "y": 222,
+      "width": 34,
+      "height": 34,
       "strokeColor": "transparent",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
@@ -489,7 +489,7 @@
       "roundness": null,
       "updated": 1776134076349,
       "status": "saved",
-      "fileId": "verify-shield-file",
+      "fileId": "keycloak-logo-file",
       "scale": [
         1,
         1
@@ -498,13 +498,13 @@
     },
     {
       "type": "text",
-      "id": "ibm-verify-heading",
+      "id": "keycloak-heading",
       "x": 612.5036736395608,
       "y": 225.81265211438694,
       "width": 158.36757580721198,
       "height": 26.162487380222565,
-      "text": "IBM Verify",
-      "originalText": "IBM Verify",
+      "text": "Keycloak",
+      "originalText": "Keycloak",
       "fontSize": 20.92998990417805,
       "fontFamily": 3,
       "textAlign": "left",
@@ -535,7 +535,7 @@
     },
     {
       "type": "line",
-      "id": "ibm-verify-divider",
+      "id": "keycloak-divider",
       "x": 569,
       "y": 278,
       "width": 250,
@@ -578,7 +578,7 @@
     },
     {
       "type": "text",
-      "id": "ibm-verify-detail",
+      "id": "keycloak-detail",
       "x": 554,
       "y": 294,
       "width": 280,
@@ -730,8 +730,8 @@
       "y": 293.04947131183496,
       "width": 319.7320111305603,
       "height": 35,
-      "text": "Authenticates users with IBM Verify\nPasses subject_token to the agent",
-      "originalText": "Authenticates users with IBM Verify\nPasses subject_token to the agent",
+      "text": "Authenticates users with Keycloak\nPasses subject_token to the agent",
+      "originalText": "Authenticates users with Keycloak\nPasses subject_token to the agent",
       "fontSize": 14,
       "fontFamily": 3,
       "textAlign": "center",
@@ -1133,7 +1133,7 @@
     },
     {
       "type": "arrow",
-      "id": "verify-to-webui",
+      "id": "keycloak-to-webui",
       "x": 969.6095941654087,
       "y": 281.2298503381728,
       "width": 109.19501011957448,
@@ -1258,7 +1258,7 @@
     },
     {
       "type": "arrow",
-      "id": "token-exchange-to-verify",
+      "id": "token-exchange-to-keycloak",
       "x": 680,
       "y": 425,
       "width": 0,
@@ -5820,10 +5820,10 @@
     "lockedMultiSelections": {}
   },
   "files": {
-    "verify-shield-file": {
-      "id": "verify-shield-file",
+    "keycloak-logo-file": {
+      "id": "keycloak-logo-file",
       "mimeType": "image/svg+xml",
-      "dataURL": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNCA0MiIgd2lkdGg9IjM0IiBoZWlnaHQ9IjQyIj4KICA8cGF0aCBkPSJNMTcgMkwyOSA4LjJ2MTIuOWMwIDguMi00LjQgMTQuMi0xMiAxOC45QzkuNCAzNS4zIDUgMjkuMyA1IDIxLjFWOC4yTDE3IDJaIiBmaWxsPSIjZmZmZmZmIiBzdHJva2U9IiNkNWRlZWYiIHN0cm9rZS13aWR0aD0iMS40Ii8+CiAgPHBhdGggZD0iTTEyLjIgMTAuMiAxNyA3LjhsNiAzLjJ2My4ybC02LTMuMS00LjggMi40WiIgZmlsbD0iIzhhYTBjZiIvPgogIDxwYXRoIGQ9Ik0xMi4yIDE2LjQgMTcgMTRsNiAzLjF2My4ybC02LTMuMS00LjggMi40WiIgZmlsbD0iIzhhYTBjZiIvPgogIDxwYXRoIGQ9Ik0xMi4yIDIyLjYgMTcgMjAuMmw2IDMuMXYzLjJsLTYtMy4xLTQuOCAyLjRaIiBmaWxsPSIjOGFhMGNmIi8+CiAgPHBhdGggZD0iTTEyLjIgMjguOCAxNyAyNi40bDYgMy4xdjEuOGMtMS43IDEuOS0zLjcgMy41LTYgNS4xLTIuMi0xLjUtNC4yLTMuMi02LTUuMXYtMi41WiIgZmlsbD0iIzhhYTBjZiIvPgo8L3N2Zz4=",
+      "dataURL": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgd2lkdGg9IjI0IiBoZWlnaHQ9IjI0Ij48cGF0aCBkPSJtMTguNzQyIDEuMTgyLTEyLjQ5My4wMDJDNC4xNTUgNC43ODQgMi4wNzkgOC4zOTMgMCAxMi4wMDJjMi4wNzEgMy42MTIgNC4xNjIgNy4yMTQgNi4yNTIgMTAuODE2bDEyLjQ5LS4wMDQgMy4wODktNS40MDRoMi4xNTh2LS4wMDJIMjRMMjMuOTk2IDYuNTloLTIuMTY4ek04LjMyNyA0Ljc5MmgyLjA4MWwxLjA0IDEuOC0zLjEyIDUuNDEzIDMuMTE3IDUuNDAzLTEuMDM1IDEuODFIOC4zMjdhMjA0Ny41NjYgMjA0Ny41NjYgMCAwIDAtNC4xNjgtNy4yMDRDNS41NDcgOS42MDYgNi45MzcgNy4yIDguMzI3IDQuNzkyWm02LjI0MSAwIDIuMDg2LjAwM2MxLjM5MyAyLjQwNSAyLjc4IDQuODEzIDQuMTY2IDcuMjIybC00LjE2NyA3LjJoLTIuMDhjLS4zODItLjU2Mi0xLjAzOC0xLjgwOC0xLjAzOC0xLjgwOGwzLjEyMy01LjQwNS0zLjEyNC01LjQxM3oiIGZpbGw9IiM0ZDRkNGQiLz48L3N2Zz4=",
       "created": 1776074435843,
       "lastRetrieved": 1776074435843,
       "version": 2

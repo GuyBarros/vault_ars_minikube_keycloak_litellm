@@ -14,7 +14,7 @@ flowchart LR
     web[Web App]
     gw[LiteLLM PEP]
     exchange["token-exchange<br>OBO"]
-    verify[Keycloak]
+    keycloak[Keycloak]
     mcp[user-mcp runtime]
     vault[Vault]
     db[Database]
@@ -25,7 +25,7 @@ flowchart LR
     web --> gw
     gw --> agent[AI Agent]
     agent --> exchange
-    exchange --> verify
+    exchange --> keycloak
     agent --> gw
     gw --> llm
     gw -->|"tools/call"| opa
@@ -51,6 +51,7 @@ Consul (rede), LiteLLM+OPA (IA), and Vault (segredos) enforce runtime controls w
 
 - admit only mesh identities (`default/web`, `default/ai-agent`) at the AI gateway
 - allow or deny MCP tools from the Vault KV catalog and `users.read` / `users.write` scopes
+- deny `delete_user_by_email` outright (listed in `disabled_tools`; the agent never receives it)
 - require a Keycloak MFA step-up (LoA) for `create_user`, validated by Vault on the write path
 - mint per-request Postgres credentials and mask PII on reads (Transform) unless the caller is `admin`
 - optionally block prompt injection via the LiteLLM content guardrail → `opa-gov-api`
@@ -60,10 +61,6 @@ Consul (rede), LiteLLM+OPA (IA), and Vault (segredos) enforce runtime controls w
 #### Agentic identity
 
 ![Agentic identity architecture](./documentation/agentic_identity/agentic_identity.png)
-
-#### Agentic runtime security
-
-![Agentic runtime security architecture](./documentation/agentic_runtime_security/agent_runtime_security.png)
 
 The main repo components are:
 
@@ -83,8 +80,7 @@ The main repo components are:
 | [`infra/local-minikube/`](./infra/local-minikube/) | `make up` — bootstraps minikube, Consul, and Vault, then configures the MCP-authz control plane |
 | [`deploy-k8s/`](./deploy-k8s/) | Kubernetes, Consul, and policy-enforcement deployment manifests plus deployment order |
 | [`documentation/agent_control_plane/`](./documentation/agent_control_plane/) | Product-level architecture diagrams for the agentic security control plane |
-| [`documentation/agentic_identity/`](./documentation/agentic_identity/) | Design documentation for platform-native identity to Vault-issued agent identity |
-| [`documentation/agentic_runtime_security/`](./documentation/agentic_runtime_security/) | Design documentation for runtime security enforcement with Consul, Vault, and pluggable policy engines |
+| [`documentation/agentic_identity/`](./documentation/agentic_identity/) | Diagrams for platform-native identity to Vault-issued agent identity |
 | [`deploy-k8s/opa-server.yaml`](./deploy-k8s/opa-server.yaml) | Deploys the OPA server used for runtime policy evaluation, with Vault Agent injecting policies securely from HashiCorp Vault into the OPA runtime |
 | HashiCorp Vault + platform identity | Issues OIDC-conformant workload identity tokens for agentic workloads from platform-native identity and securely distributes OPA policy content |
 | HashiCorp Consul + Envoy | Enforces transparent runtime controls and policy checks around service-to-service traffic |
@@ -103,7 +99,7 @@ Everything runs locally on minikube — no cloud provisioning required.
 
 ```bash
 cd infra/local-minikube
-make up   # bootstrap → configure → keycloak → images → deploy → verify
+make up   # bootstrap → configure → keycloak → images → deploy → verify → credentials
 ```
 
 See [`infra/local-minikube/README.md`](./infra/local-minikube/README.md) for prerequisites, individual stages (`make bootstrap`, `make configure`, `make keycloak`, `make images`, `make deploy`), and troubleshooting. For manually applying or debugging individual manifests, see [`deploy-k8s/README.md`](./deploy-k8s/README.md).
@@ -143,8 +139,6 @@ Use the component READMEs below for service-specific configuration, local develo
 | [`opa-policy-studio/README.md`](./opa-policy-studio/README.md) | OPA Policy Studio PoC — run the browser-based policy authoring / evaluation UI against an OPA server |
 | [`opa-mcp-auth/README.md`](./opa-mcp-auth/README.md) | Data-driven MCP tool authorization pilot — Rego policy, Vault KV v2 catalog seeding, OPA `--watch` hot-reload, and end-to-end live-reload tests against `user-mcp` |
 | [`consul-mcp-authz/README.md`](./consul-mcp-authz/README.md) | MCP authorization catalog API + operator UI — REST endpoints, single-image build (API + Next.js under supervisord), live MCP `tools/list` discovery, and UI walkthrough |
-| [`documentation/agentic_identity/platform_to_agentic_identity.md`](./documentation/agentic_identity/platform_to_agentic_identity.md) | Platform-native identity to Vault-issued agent identity design pattern |
-| [`documentation/agentic_runtime_security/ai_guardrails.md`](./documentation/agentic_runtime_security/ai_guardrails.md) | Runtime security architecture with Consul, Vault, and OPA |
 
 ## Suggested read order
 
