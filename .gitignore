@@ -20,3 +20,6 @@ deploy-k8s/*.env.bkp
 scripts/.env
 scripts/out/
 ai-agent/.local/
+
+# HashiCorp license files
+*.hclic
