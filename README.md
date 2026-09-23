@@ -1,3 +1,6 @@
+<sup>This demo has been copied from the great Ravi Panchal and then modified with the help of Coding Agents and friends.</sup>
+
+
 # Agentic IAM Runtime Security Demo
 
 This repository contains a demo environment that combines Keycloak, HashiCorp Vault, HashiCorp Consul, an AI agent runtime, identity token exchange, and policy / governance enforcement. It demonstrates how a user can authenticate with Keycloak, how agentic workloads can receive a unique non-human identity at runtime through platform-native identity using a Vault-issued OIDC token, and how runtime security controls can be enforced transparently through Consul with pluggable policy engines.
