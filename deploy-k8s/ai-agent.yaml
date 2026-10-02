@@ -23,20 +23,17 @@ spec:
 
         vault.hashicorp.com/agent-init-first: "true"
         vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/role: "agent-role"
+        # Kubernetes auth: Vault attests the pod via TokenReview (service
+        # account default/ai-agent) before it will mint the SPIFFE ID.
+        vault.hashicorp.com/role: "ai-agent"
+        vault.hashicorp.com/auth-type: "kubernetes"
+        vault.hashicorp.com/auth-path: "auth/kubernetes"
 
-        # Set auth method to JWT
-        vault.hashicorp.com/auth-type: "jwt"
-        vault.hashicorp.com/auth-path: "auth/k8s_jwt"
-
-        # The "path" parameter for the JWT auth method is passed via this annotation:
-        vault.hashicorp.com/auth-config-path: "/var/run/secrets/kubernetes.io/serviceaccount/token"
-        vault.hashicorp.com/auth-config-remove-jwt-after-reading: "false"
-        
-        # The template to fetch the OIDC token and write it to disk
-        vault.hashicorp.com/agent-inject-secret-actor-token: "identity/oidc/token/agent-role"
+        # The actor token is a JWT-SVID (sub = the agent's SPIFFE ID) minted
+        # by Vault's SPIFFE secrets engine; aud is what token-exchange requires.
+        vault.hashicorp.com/agent-inject-secret-actor-token: "spiffe/role/ai-agent/mintjwt"
         vault.hashicorp.com/agent-inject-template-actor-token: |
-          {{- with secret "identity/oidc/token/agent-role" -}}
+          {{- with secret "spiffe/role/ai-agent/mintjwt" "audience=agent-actor" -}}
           {{ .Data.token }}
           {{- end -}}
         vault.hashicorp.com/tls-skip-verify: "true"

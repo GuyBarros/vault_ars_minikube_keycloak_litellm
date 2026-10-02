@@ -37,7 +37,7 @@ def _readonly_jwt() -> str:
 def _valid_actor() -> MagicMock:
     """An actor validator that accepts any token (validation itself is tested in test_actor_token.py)."""
     validator = MagicMock(spec=ActorTokenValidator)
-    validator.validate.return_value = {"agent_id": "ai-agent"}
+    validator.validate.return_value = {"agent_id": "ai-agent", "sub": "spiffe://agentic.demo/ns/default/sa/ai-agent"}
     return validator
 
 

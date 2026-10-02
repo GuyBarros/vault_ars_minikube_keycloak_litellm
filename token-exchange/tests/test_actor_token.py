@@ -1,4 +1,4 @@
-"""Unit tests for ActorTokenValidator (Vault identity-token verification)."""
+"""Unit tests for ActorTokenValidator (Vault JWT-SVID verification)."""
 import time
 from types import SimpleNamespace
 
@@ -9,7 +9,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from exceptions.errors import VerifyAuthenticationError, VerifyTokenExchangeError
 from keycloak.actor_token import ActorTokenValidator
 
-ISSUER = "https://vault.example:8200/v1/identity/oidc"
+ISSUER = "https://vault.example:8200/v1/spiffe"
+SPIFFE_ID = "spiffe://agentic.demo/ns/default/sa/ai-agent"
 AUDIENCE = "agent-actor"
 
 
@@ -34,7 +35,7 @@ class FakeJwks:
 
 def _token(key=VAULT_KEY, **overrides):
     now = int(time.time())
-    claims = {"iss": ISSUER, "aud": AUDIENCE, "sub": "entity-1", "agent_id": "ai-agent", "iat": now, "exp": now + 3600}
+    claims = {"iss": ISSUER, "aud": AUDIENCE, "sub": SPIFFE_ID, "agent_id": "ai-agent", "iat": now, "exp": now + 3600}
     claims.update(overrides)
     claims = {k: v for k, v in claims.items() if v is not None}
     return jwt.encode(claims, key, algorithm="RS256", headers={"kid": "vault-key"})
@@ -47,6 +48,17 @@ def _validator(**kwargs):
 def test_accepts_a_token_signed_by_vault():
     claims = _validator().validate(_token())
     assert claims["agent_id"] == "ai-agent"
+    assert claims["sub"] == SPIFFE_ID
+
+
+def test_rejects_a_token_whose_subject_is_not_a_spiffe_id():
+    with pytest.raises(VerifyAuthenticationError):
+        _validator().validate(_token(sub="entity-1"))
+
+
+def test_rejects_a_token_without_a_subject():
+    with pytest.raises(VerifyAuthenticationError):
+        _validator().validate(_token(sub=None))
 
 
 def test_rejects_a_token_signed_with_another_key():

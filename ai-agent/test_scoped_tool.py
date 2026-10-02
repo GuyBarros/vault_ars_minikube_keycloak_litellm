@@ -457,9 +457,14 @@ def _build_settings(tmp_path):
 
     import jwt
 
-    # The agent checks the actor token's exp, so it has to be a JWT.
+    # The agent checks the actor token's exp and SPIFFE ID sub, so it has to be a JWT-SVID.
     actor_token_path.write_text(
-        jwt.encode({"exp": int(time.time()) + 3600}, "k", algorithm="HS256"), encoding="utf-8"
+        jwt.encode(
+            {"sub": "spiffe://agentic.demo/ns/default/sa/ai-agent", "exp": int(time.time()) + 3600},
+            "k",
+            algorithm="HS256",
+        ),
+        encoding="utf-8",
     )
     return type(agent_api.SETTINGS)(
         model="x",

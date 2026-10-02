@@ -90,6 +90,7 @@ class OBOBroker:
         authorize_scope(subject_token, scope)
         preferred_username = claim_from_token(subject_token, "preferred_username")
         agent_id = actor_claims.get("agent_id")
+        spiffe_id = actor_claims["sub"]
 
         normalized_scope = _normalize_scope(scope)
         # Compose actor_token + normalized scope into the second cache slot so the
@@ -104,6 +105,7 @@ class OBOBroker:
                 message=f"OBO token exchange (cache hit) for scope={normalized_scope!r}",
                 preferred_username=preferred_username,
                 agent_id=agent_id,
+                spiffe_id=spiffe_id,
                 scope=normalized_scope,
                 cache_hit=True,
                 duration_ms=duration_ms,
@@ -122,6 +124,7 @@ class OBOBroker:
             message=f"OBO token exchange (issued by Keycloak) for scope={normalized_scope!r}",
             preferred_username=preferred_username,
             agent_id=agent_id,
+            spiffe_id=spiffe_id,
             scope=normalized_scope,
             cache_hit=False,
             duration_ms=duration_ms,

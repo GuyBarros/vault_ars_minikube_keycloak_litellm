@@ -118,8 +118,6 @@ def _jwt_with_expiry(offset_seconds: int) -> str:
 
 
 
-ACTOR_TOKEN = _jwt_with_expiry(3600)  # the agent now checks the actor token's exp, so it must be a JWT
-
 def _jwt_with_claims(offset_seconds: int, **extra_claims) -> str:
     header = base64.urlsafe_b64encode(
         json.dumps({"alg": "none", "typ": "JWT"}, separators=(",", ":")).encode(
@@ -133,6 +131,17 @@ def _jwt_with_claims(offset_seconds: int, **extra_claims) -> str:
     ).rstrip(b"=")
     signature = b"signature"
     return b".".join([header, payload, signature]).decode("utf-8")
+
+
+SPIFFE_ID = "spiffe://agentic.demo/ns/default/sa/ai-agent"
+
+
+def _actor_jwt(offset_seconds: int, **extra_claims) -> str:
+    """A JWT-SVID shaped actor token: the agent requires exp and a SPIFFE ID sub."""
+    return _jwt_with_claims(offset_seconds, sub=SPIFFE_ID, **extra_claims)
+
+
+ACTOR_TOKEN = _actor_jwt(3600)
 
 
 def _structured_log_records(caplog, logger_name: str):
@@ -256,7 +265,7 @@ def test_query_reads_actor_token_before_the_llm(monkeypatch):
 
     def read_actor():
         seen["actor"] += 1
-        return _jwt_with_expiry(600)
+        return _actor_jwt(600)
 
     monkeypatch.setattr(agent_api.app.state.token_service, "read_actor_token", read_actor)
 
@@ -981,7 +990,7 @@ def test_create_app_routes_through_litellm_gateway_when_configured(monkeypatch):
 def test_agent_request_started_is_logged_with_identity(monkeypatch, caplog):
     client = TestClient(agent_api.app)
     access_token = _jwt_with_claims(300, preferred_username="alice@example.com")
-    actor_token = _jwt_with_claims(600, agent_id="agent-42")
+    actor_token = _actor_jwt(600, agent_id="agent-42")
     agent_api.SETTINGS.actor_token_path.write_text(actor_token, encoding="utf-8")
     agent_api.app.state.actor_agent_id = agent_api._load_startup_agent_id(
         agent_api.app.state.token_service
@@ -1022,7 +1031,7 @@ def test_agent_request_started_is_logged_with_identity(monkeypatch, caplog):
 def test_response_sent_includes_identity_and_user_message(monkeypatch, caplog):
     client = TestClient(agent_api.app)
     access_token = _jwt_with_claims(300, preferred_username="bob@example.com")
-    actor_token = _jwt_with_claims(600, agent_id="agent-99")
+    actor_token = _actor_jwt(600, agent_id="agent-99")
     agent_api.SETTINGS.actor_token_path.write_text(actor_token, encoding="utf-8")
     agent_api.app.state.actor_agent_id = agent_api._load_startup_agent_id(
         agent_api.app.state.token_service
@@ -1135,7 +1144,7 @@ def _refresh_actor_agent_id(jwt_actor_token: str) -> None:
 
 
 def test_request_received_log_includes_agent_prefix(caplog):
-    _refresh_actor_agent_id(_jwt_with_claims(600, agent_id="agent-mw"))
+    _refresh_actor_agent_id(_actor_jwt(600, agent_id="agent-mw"))
     client = TestClient(agent_api.app)
 
     with caplog.at_level(logging.DEBUG, logger="agent_api"):
@@ -1152,7 +1161,7 @@ def test_request_received_log_includes_agent_prefix(caplog):
 
 
 def test_request_failed_log_includes_agent_prefix(caplog):
-    _refresh_actor_agent_id(_jwt_with_claims(600, agent_id="agent-err"))
+    _refresh_actor_agent_id(_actor_jwt(600, agent_id="agent-err"))
     client = TestClient(agent_api.app)
 
     with caplog.at_level(logging.INFO, logger="agent_api"):
@@ -1172,7 +1181,7 @@ def test_request_failed_log_includes_agent_prefix(caplog):
 
 
 def test_response_sent_for_non_query_endpoint_includes_agent_prefix(caplog):
-    _refresh_actor_agent_id(_jwt_with_claims(600, agent_id="agent-tokens"))
+    _refresh_actor_agent_id(_actor_jwt(600, agent_id="agent-tokens"))
     client = TestClient(agent_api.app)
 
     with caplog.at_level(logging.DEBUG, logger="agent_api"):
@@ -1185,6 +1194,16 @@ def test_response_sent_for_non_query_endpoint_includes_agent_prefix(caplog):
     ]
     assert response_logs
     assert response_logs[-1]["message"].startswith("[agent=agent-tokens]")
+
+
+def test_read_actor_token_rejects_a_token_without_a_spiffe_id(tmp_path):
+    actor_token_path = tmp_path / "actor-token"
+    actor_token_path.write_text(_jwt_with_claims(600, agent_id="ai-agent"), encoding="utf-8")
+
+    with pytest.raises(AppError) as exc_info:
+        identity.read_actor_token(actor_token_path, agent_api.LOGGER)
+
+    assert exc_info.value.message == "Actor token subject is not a SPIFFE ID."
 
 
 def test_load_startup_agent_id_returns_none_when_actor_token_missing(tmp_path, monkeypatch):

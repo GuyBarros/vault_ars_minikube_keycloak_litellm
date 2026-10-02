@@ -21,8 +21,9 @@ model_list:
       # with finish_reason=tool_calls). Using "openai/" against Ollama's own
       # OpenAI-compatible endpoint instead just forwards that already-correct
       # stream through, sidestepping litellm's buggy translation entirely.
-      # Colima/minikube: host.minikube.internal (and host.docker.internal) is
-      # this Mac. host.containers.internal is Podman-only and does not resolve.
+      # host.minikube.internal is this Mac. Colima resolves it natively; on the
+      # Podman driver bootstrap.sh remaps it in CoreDNS to the gvproxy host IP
+      # (host.containers.internal), since minikube's default fe80::1 is dead.
       model: openai/qwen2.5:7b
       api_base: http://host.minikube.internal:11434/v1
       api_key: "not-needed"

@@ -48,11 +48,12 @@ def read_actor_token(actor_token_path: Path, logger: logging.Logger) -> str:
             message="Actor token file is empty.",
         )
 
-    validate_actor_token(actor_token)
+    actor_claims = validate_actor_token(actor_token)
     log_event(
         logger,
         "token_chain_actor",
         message="Actor token still valid",
+        spiffe_id=actor_claims["sub"],
         PDP_Decision="ALLOW",
         pep="ai-agent/validate_actor_token",
         pdp="vault-agent-inject",

@@ -291,8 +291,8 @@ register_user_entity "user" "user-mcp-agentic-read"
 register_user_entity "writer" "user-mcp-agentic-read,user-mcp-agentic-write"
 register_user_entity "admin" "user-mcp-agentic-read,user-mcp-agentic-write"
 
-# Stable agent identity: agent_id is hardcoded to "ai-agent" in
-# identity/oidc/role/agent-role's template (configure.sh section 4), so the
+# Stable agent identity: agent_id is hardcoded to "ai-agent" in the
+# spiffe/role/ai-agent JWT-SVID template (configure.sh section 4b), so the
 # actor claim the keycloak-providers SPI stamps as act.sub is always
 # "ai-agent" regardless of which pod is currently running.
 vault write identity/entity name=ai-agent-agentic \

@@ -86,13 +86,20 @@ def extract_agent_identity_claims(actor_token: str | None) -> dict[str, str | No
 
 
 def validate_actor_token(actor_token: str) -> dict[str, Any]:
-    """Check the Vault actor JWT is still inside its validity window.
+    """Check the Vault actor JWT-SVID carries a SPIFFE ID and is still valid.
 
     Signature stays with Vault (the file is injected by vault-agent). This
     runs on every chat turn, before the LLM, so an expired actor fails closed
     instead of only surfacing on the next tools/call.
     """
     payload = decode_jwt_payload(actor_token, "Actor token")
+    spiffe_id = payload.get("sub")
+    if not isinstance(spiffe_id, str) or not spiffe_id.startswith("spiffe://"):
+        raise AppError(
+            status_code=500,
+            error="agent_error",
+            message="Actor token subject is not a SPIFFE ID.",
+        )
     now = time.time()
     exp = payload.get("exp")
     if not isinstance(exp, (int, float)) or float(exp) <= now:

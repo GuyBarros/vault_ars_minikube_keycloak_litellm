@@ -83,6 +83,11 @@ if ! minikube status -p "$PROFILE" >/dev/null 2>&1; then
 else
   echo "profile $PROFILE already running, skipping start"
 fi
+# The kicbase image boots dockerd, which sets iptables FORWARD policy to DROP
+# and leaves it there after minikube stops it (containerd runtime). That drops
+# all pod-to-pod traffic, including DNS. Re-run on every bootstrap: node
+# restarts bring it back.
+minikube -p "$PROFILE" ssh -- sudo iptables -P FORWARD ACCEPT
 
 echo "=== 2. Vault self-signed TLS ==="
 if [ ! -f "$GEN_DIR/vault-fullchain.crt" ]; then
@@ -159,6 +164,20 @@ if ! KC -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}' | gr
   KC -n kube-system rollout status deployment coredns --timeout=60s
 else
   echo "CoreDNS already forwards the consul zone, skipping"
+fi
+
+# Podman driver: minikube maps host.minikube.internal to fe80::1, which does
+# not reach the Mac, so LiteLLM/ai-agent can't reach Ollama. The Mac is
+# host.containers.internal (gvproxy) there - point CoreDNS at that instead.
+HOST_GW_IP=$(minikube -p "$PROFILE" ssh -- getent ahostsv4 host.containers.internal 2>/dev/null | awk 'NR==1{print $1}')
+if [ -n "$HOST_GW_IP" ] && ! KC -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}' | grep -q "$HOST_GW_IP host.minikube.internal"; then
+  echo "Podman driver: mapping host.minikube.internal -> $HOST_GW_IP in CoreDNS"
+  KC -n kube-system get configmap coredns -o jsonpath='{.data.Corefile}' \
+    | sed -E "s/^([[:space:]]*)[^[:space:]]+ host\.minikube\.internal$/\1$HOST_GW_IP host.minikube.internal/" > "$GEN_DIR/Corefile"
+  KC -n kube-system create configmap coredns --from-file=Corefile="$GEN_DIR/Corefile" \
+    --dry-run=client -o yaml | KC apply -f -
+  KC -n kube-system rollout restart deployment coredns
+  KC -n kube-system rollout status deployment coredns --timeout=60s
 fi
 
 echo "=== 5. Vault (Enterprise, raft + TLS) ==="

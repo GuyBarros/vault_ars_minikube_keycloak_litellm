@@ -1,8 +1,9 @@
 """Validation of the Vault-signed actor token (the agent's identity).
 
-The actor token is a Vault OIDC identity token. Keycloak can't verify it, so
-this service does before forwarding it: signature against the keys Vault
-publishes, plus issuer, audience and expiry. Without this, anyone who can reach
+The actor token is a JWT-SVID minted by Vault's SPIFFE secrets engine: its
+`sub` is the agent's SPIFFE ID. Keycloak can't verify it, so this service does
+before forwarding it: signature against the keys Vault publishes, plus issuer,
+audience, expiry and a SPIFFE ID subject. Without this, anyone who can reach
 the exchange endpoint could name any agent_id.
 """
 import ssl
@@ -45,7 +46,7 @@ class ActorTokenValidator:
         """Return the verified claims of *actor_token*.
 
         Raises:
-            VerifyAuthenticationError: the token is not a valid, current Vault identity token.
+            VerifyAuthenticationError: the token is not a valid, current Vault JWT-SVID.
             VerifyTokenExchangeError:  validation is unconfigured, or Vault's keys are unreachable
                                        (fail closed: the exchange is refused either way).
         """
@@ -56,16 +57,19 @@ class ActorTokenValidator:
             )
         try:
             key = self._client().get_signing_key_from_jwt(actor_token).key
-            return jwt.decode(
+            claims = jwt.decode(
                 actor_token,
                 key,
                 algorithms=["RS256"],
                 issuer=self._issuer,
                 audience=self._audience,
-                options={"require": ["exp", "iat", "iss", "aud"]},
+                options={"require": ["exp", "iat", "iss", "aud", "sub"]},
                 leeway=self._leeway,
             )
         except jwt.PyJWKClientConnectionError as exc:
             raise VerifyTokenExchangeError(f"Vault signing keys are unavailable: {exc}") from exc
         except jwt.PyJWTError as exc:
-            raise VerifyAuthenticationError(f"actor_token is not a valid Vault identity token: {exc}") from exc
+            raise VerifyAuthenticationError(f"actor_token is not a valid Vault JWT-SVID: {exc}") from exc
+        if not claims["sub"].startswith("spiffe://"):
+            raise VerifyAuthenticationError("actor_token subject is not a SPIFFE ID")
+        return claims

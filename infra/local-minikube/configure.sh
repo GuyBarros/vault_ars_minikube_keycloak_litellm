@@ -213,6 +213,47 @@ template=$(jq -n -r --arg org "$ID_ORG" --arg bu "$ID_BU" --arg dept "$ID_DEPT" 
 jq -n --arg key "default" --argjson ttl 3600 --arg template "$template" \
   '{key: $key, ttl: $ttl, template: $template, client_id: "agent-actor"}' | vault write identity/oidc/role/agent-role -
 
+echo "=== 4b. Vault: ai-agent SPIFFE ID (Kubernetes auth + SPIFFE secrets engine) ==="
+# The ai-agent's actor token is a JWT-SVID. Unlike k8s_jwt (offline signature
+# check only), the kubernetes auth method attests the pod through the
+# TokenReview API: the service account token must be live and belong to
+# default/ai-agent. Vault runs in-cluster, so it reviews with its own
+# service account (the chart grants it system:auth-delegator).
+vault auth list -format=json | jq -e 'has("kubernetes/")' >/dev/null || \
+  vault auth enable -path=kubernetes -description="Kubernetes auth (TokenReview attestation)" kubernetes
+vault write auth/kubernetes/config kubernetes_host="https://kubernetes.default.svc:443"
+
+vault policy write ai-agent-spiffe - <<-EOT
+	path "spiffe/role/ai-agent/mintjwt" {
+	  capabilities = ["create", "update"]
+	}
+	EOT
+
+vault write auth/kubernetes/role/ai-agent \
+  bound_service_account_names=ai-agent \
+  bound_service_account_namespaces=default \
+  token_policies=default,ai-agent-spiffe \
+  token_period=1800
+
+vault secrets list -format=json | jq -e 'has("spiffe/")' >/dev/null || \
+  vault secrets enable -path=spiffe spiffe
+# iss is jwt_issuer_url verbatim and discovery advertises <iss>/.well-known/keys,
+# so it must be the mount's own URL for that to resolve (token-exchange reads
+# the keys from there).
+vault write spiffe/config trust_domain="$SPIFFE_TRUST_DOMAIN" jwt_issuer_url="https://${VAULT_PUBLIC_ADDR}/v1/spiffe"
+
+# The SPIFFE ID comes from the attested service account (the kubernetes auth
+# entity alias metadata), not from anything the pod asserts. The remaining
+# claims match identity/oidc/role/agent-role so Keycloak's act claim and the
+# agent registry (agent_id "ai-agent") keep working unchanged.
+K8S_AUTH_ACCESSOR=$(vault auth list -format=json | jq -r '."kubernetes/".accessor')
+alias_md="identity.entity.aliases.${K8S_AUTH_ACCESSOR}.metadata"
+spiffe_template=$(jq -n -c --arg td "$SPIFFE_TRUST_DOMAIN" --arg md "$alias_md" \
+  --arg org "$ID_ORG" --arg bu "$ID_BU" --arg dept "$ID_DEPT" --arg svc "$ID_SVC_GROUP" \
+  '{sub: ("spiffe://" + $td + "/ns/{{" + $md + ".service_account_namespace}}/sa/{{" + $md + ".service_account_name}}"),
+    org: $org, bu: $bu, department: $dept, service_group: $svc, agent_id: "ai-agent"}')
+vault write spiffe/role/ai-agent template="$spiffe_template" ttl=1h use_jti_claim=true
+
 echo "=== 5. Vault: user-mcp database secrets engine (dynamic Postgres creds) ==="
 vault secrets list -format=json | jq -e 'has("database/")' >/dev/null || \
   vault secrets enable -path=database database

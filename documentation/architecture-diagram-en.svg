@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1212" height="880" viewBox="0 0 1212 880" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="nv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f3a68"/>
+    </marker>
+    <marker id="or" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#e07b1a"/>
+    </marker>
+    <marker id="bk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#222"/>
+    </marker>
+    <style>
+      .box { fill: #f7f7f7; stroke: #222; stroke-width: 2; }
+      .title { font-weight: bold; font-size: 17px; fill: #111; text-anchor: middle; }
+      .cert { font-size: 9px; fill: #2e6b2e; text-anchor: middle; }
+      .nv { stroke: #1f3a68; stroke-width: 2; fill: none; }
+      .or { stroke: #e07b1a; stroke-width: 2; fill: none; }
+      .lbl { font-size: 12px; fill: #1f3a68; }
+      .lblb { font-size: 13px; fill: #1f3a68; font-weight: bold; }
+      .olbl { fill: #e07b1a; }
+    </style>
+  </defs>
+
+  <rect width="1212" height="880" fill="#ececec"/>
+
+  <!-- Identity Provider -->
+  <text x="588" y="52" font-size="16" font-weight="bold" fill="#c0392b">*Implement LoA</text>
+  <text x="598" y="72" font-size="16" font-weight="bold" fill="#c0392b">at the IdP</text>
+  <rect class="box" x="598" y="83" width="140" height="72" rx="3"/>
+  <text class="title" x="668" y="114" style="font-size:15px">IDENTITY</text>
+  <text class="title" x="668" y="134" style="font-size:15px">Provider (IdP)</text>
+
+  <!-- Service agent <-> IdP -->
+  <path class="nv" d="M297,432 V127 H594" marker-end="url(#nv)"/>
+  <text class="lbl" x="345" y="119">Obtains Customer authentication</text>
+  <path class="nv" d="M598,142 H317 V428" marker-end="url(#nv)"/>
+  <text class="lbl" x="385" y="157">mTLS</text>
+  <text class="lbl" transform="translate(337,345) rotate(-90)">Returns Customer JWT</text>
+
+  <!-- LoA -->
+  <text x="50" y="190" font-size="20" font-weight="bold" fill="#e07b1a">LoA</text>
+  <text class="olbl" x="56" y="218" font-size="13">0 = Customer from another</text>
+  <text class="olbl" x="80" y="236" font-size="13">carrier <tspan font-size="10">(non-Vivo / roaming)</tspan></text>
+  <text class="olbl" x="58" y="272" font-size="13">1 = Vivo customer,</text>
+  <text class="olbl" x="84" y="290" font-size="13">Vivo network</text>
+  <path class="or" d="M50,262 V292 Q50,300 60,300 H118 Q128,300 128,312 Q128,300 138,300 H195 Q205,300 205,292 V262"/>
+  <path class="or" d="M128,318 V392" marker-end="url(#or)"/>
+  <path class="or" d="M277,432 V212 H226" marker-end="url(#or)"/>
+
+  <!-- Customer -->
+  <g stroke="#222" stroke-width="2" fill="none">
+    <circle cx="130" cy="428" r="11" fill="#f7f7f7"/>
+    <path d="M130,439 V470 M112,452 H148 M130,470 L116,490 M130,470 L144,490"/>
+  </g>
+  <text class="title" x="132" y="506" style="font-size:18px">CUSTOMER</text>
+  <path class="nv" d="M158,457 H244" marker-end="url(#nv)"/>
+  <text x="166" y="473" font-size="11" fill="#222">CHAT/VOICE</text>
+
+  <!-- External environment -->
+  <rect x="228" y="397" width="177" height="155" fill="none" stroke="#999" stroke-width="1.5" stroke-dasharray="4 4"/>
+  <text x="316" y="574" font-size="14" fill="#777" text-anchor="middle">External Environment</text>
+  <rect class="box" x="248" y="432" width="142" height="72" rx="3"/>
+  <text class="title" x="319" y="456" style="font-size:15px">Customer</text>
+  <text class="title" x="319" y="475" style="font-size:15px">Service Agent</text>
+  <text class="cert" x="319" y="496">Certificates: Client and Server</text>
+
+  <!-- Service Agent -> APIM -->
+  <path d="M390,452 H543" stroke="#1f3a68" stroke-width="2" stroke-dasharray="7 5" fill="none" marker-end="url(#nv)"/>
+  <text class="lblb" x="394" y="444" style="font-size:10px">JWT FOLLOWS IN THE CALL</text>
+  <path class="or" d="M390,470 H543" marker-end="url(#or)"/>
+  <text class="lbl" x="440" y="464">mTLS</text>
+  <text x="410" y="486" font-size="11" fill="#222">Makes the call to</text>
+  <text x="410" y="499" font-size="11" fill="#222">an Agent</text>
+
+  <!-- APIM -->
+  <rect class="box" x="547" y="420" width="233" height="96" rx="3"/>
+  <text class="title" x="663" y="463" style="font-size:19px">Azure API Management/</text>
+  <text class="title" x="663" y="487" style="font-size:19px">AI Gateway</text>
+  <text class="cert" x="663" y="508">Certificates: Client and Server</text>
+
+  <!-- AI Agent -->
+  <rect class="box" x="453" y="280" width="142" height="72" rx="3"/>
+  <text class="title" x="524" y="322">AI AGENT</text>
+  <text class="cert" x="524" y="344">Certificates: Client and Server</text>
+  <path class="nv" d="M524,356 V388 H588 V416" marker-start="url(#nv)" marker-end="url(#nv)"/>
+  <text class="lbl" x="538" y="382">mTLS</text>
+
+  <!-- LLM -->
+  <rect class="box" x="724" y="280" width="140" height="72" rx="3"/>
+  <text class="title" x="794" y="322" style="font-size:20px">LLM</text>
+  <text class="cert" x="794" y="344">Certificates: Client and Server</text>
+  <path class="nv" d="M794,356 V388 H715 V416" marker-start="url(#nv)" marker-end="url(#nv)"/>
+  <text class="lbl" x="735" y="382">mTLS</text>
+
+  <!-- Ping Authorize -->
+  <path d="M804,466 H895" stroke="#222" stroke-width="1.5" fill="none" marker-start="url(#bk)" marker-end="url(#bk)"/>
+  <rect class="box" x="919" y="420" width="234" height="96" rx="3"/>
+  <text class="title" x="1036" y="470" style="font-size:24px">PING AUTHORIZE</text>
+  <text x="1036" y="495" font-size="12" fill="#111" text-anchor="middle">(PDP → Policy Decision Point)</text>
+
+  <!-- APIM -> MCP Server -->
+  <path class="nv" d="M605,516 V572 H530 V600" marker-end="url(#nv)"/>
+  <text class="lbl" x="557" y="566">mTLS</text>
+
+  <!-- APIM -> System APIs -->
+  <path class="nv" d="M722,516 V590 H780 V600" marker-end="url(#nv)"/>
+  <text class="lbl" x="733" y="554">mTLS</text>
+  <text class="lblb" x="793" y="570">JWT TOKEN</text>
+  <text class="lbl" x="793" y="586">FOLLOWS IN THIS CALL</text>
+  <rect class="box" x="732" y="604" width="140" height="72" rx="3"/>
+  <text class="title" x="802" y="645">SYSTEM APIS</text>
+  <text class="cert" x="802" y="667">Certificates: Client and Server</text>
+
+  <!-- MCP Server -->
+  <rect class="box" x="453" y="604" width="140" height="72" rx="3"/>
+  <text class="title" x="523" y="645">MCP SERVER</text>
+  <text class="cert" x="523" y="667">Certificates: Client and Server</text>
+
+  <!-- Password Vault -->
+  <rect class="box" x="157" y="606" width="140" height="72" rx="3"/>
+  <text class="title" x="227" y="647" style="font-size:14px">PASSWORD VAULT</text>
+  <text class="cert" x="227" y="669">Certificates: Client and Server</text>
+  <path class="nv" d="M453,647 H301" marker-end="url(#nv)"/>
+  <text class="lbl" x="312" y="628">Obtains Database</text>
+  <text class="lbl" x="312" y="641">credentials</text>
+  <text class="lbl" x="420" y="661">mTLS</text>
+
+  <!-- MCP -> Database -->
+  <path class="nv" d="M473,676 V728 H292 V756" marker-end="url(#nv)"/>
+  <text class="lbl" x="478" y="692">TLS</text>
+  <text class="lbl" x="466" y="706" font-size="11" text-anchor="end">Accesses Database with the</text>
+  <text class="lbl" x="466" y="720" font-size="11" text-anchor="end">credentials obtained from the vault</text>
+  <rect class="box" x="232" y="760" width="140" height="70" rx="3"/>
+  <text class="title" x="302" y="798">DATABASE</text>
+  <text class="cert" x="302" y="820">Certificates: Server</text>
+
+  <!-- MCP -> System APIs (bottom) -->
+  <path class="nv" d="M520,676 V756" marker-end="url(#nv)"/>
+  <text class="lbl" x="526" y="690">TLS</text>
+  <text x="550" y="685" font-size="9.5" fill="#e07b1a">mTLS (recommended if the API</text>
+  <text x="550" y="697" font-size="9.5" fill="#e07b1a">supports it; TLS is mandatory)</text>
+  <text class="lblb" x="528" y="724">JWT TOKEN</text>
+  <text class="lbl" x="528" y="740">FOLLOWS IN THIS CALL</text>
+  <rect class="box" x="453" y="760" width="140" height="70" rx="3"/>
+  <text class="title" x="523" y="798">SYSTEM APIS</text>
+  <text class="cert" x="523" y="820">Certificates: Client and Server</text>
+</svg>

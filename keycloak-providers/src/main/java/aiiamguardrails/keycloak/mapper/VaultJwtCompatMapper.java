@@ -31,13 +31,13 @@ import com.fasterxml.jackson.databind.JsonNode;
  * claim.
  *
  * <p>RFC 8693 {@code act} is copied from form {@code delegation_act} (JSON)
- * or synthesized from {@code delegation_actor} (a Vault-signed identity/oidc
- * token, e.g. role {@code agent-role}). Keycloak cannot verify a Vault-issued
- * actor token as {@code actor_token}, so the broker sends these custom form
- * fields instead. {@code act.sub}/{@code act.agent_id} carry the actor
- * token's own {@code agent_id} claim verbatim (this deployment has no SPIFFE
- * identity layer, unlike the reference implementation this mapper was
- * adapted from).
+ * or synthesized from {@code delegation_actor} (a Vault-signed JWT-SVID from
+ * the SPIFFE secrets engine, role {@code ai-agent}). Keycloak cannot verify a
+ * Vault-issued actor token as {@code actor_token}, so the broker sends these
+ * custom form fields instead. {@code act.sub}/{@code act.agent_id} carry the
+ * actor token's own {@code agent_id} claim verbatim (the Vault agent registry
+ * resolves the agent by it), and {@code act.spiffe_id} carries the actor
+ * token's {@code sub}: the agent's SPIFFE ID.
  *
  * <p>The level of authentication survives the exchange: a token-exchange
  * request builds a fresh client session, so Keycloak's own {@code acr} mapper
@@ -196,12 +196,15 @@ public class VaultJwtCompatMapper extends AbstractOIDCProtocolMapper implements 
             if (agentId == null || agentId.isBlank()) {
                 return null;
             }
-            // No SPIFFE identity layer in this deployment: the actor's Vault
-            // agent_id claim is the identifier used directly, both here and
-            // as the Vault identity/entity-alias name for agent-registry
-            // resolution (see infra/local-minikube/configure.sh).
+            // The actor's Vault agent_id claim stays the identifier used
+            // here, as it is the Vault identity/entity-alias name for
+            // agent-registry resolution (see infra/local-minikube/keycloak.sh).
+            // The SPIFFE ID rides alongside it.
             act.put("sub", agentId);
             act.put("agent_id", agentId);
+            if (entitySub != null && entitySub.startsWith("spiffe://")) {
+                act.put("spiffe_id", entitySub);
+            }
             String iss = text(payload, "iss");
             if (iss != null && !iss.isBlank()) {
                 act.put("iss", iss);

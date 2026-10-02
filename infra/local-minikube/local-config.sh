@@ -10,3 +10,5 @@ ID_ORG="ibm"
 ID_BU="hr"
 ID_DEPT="payroll"
 ID_SVC_GROUP="employee-profile"
+# Trust domain of the ai-agent's SPIFFE ID (Vault SPIFFE secrets engine).
+SPIFFE_TRUST_DOMAIN="agentic.demo"
